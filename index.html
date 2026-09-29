@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111c">
+  <meta name="description" content="Explore detailed zoning plans, parcels and source provenance across Limburg's 31 municipalities.">
+  <title>PlanView — Limburg spatial plans</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230b1d2b'/%3E%3Cpath d='M14 18 30 10l20 9v28L34 55l-20-9z' fill='none' stroke='%2365e1bd' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='m30 10 4 45M14 18l20 9 16-8' fill='none' stroke='%2365e1bd' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="./vendor/leaflet.css">
+  <link rel="stylesheet" href="./vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./vendor/leaflet.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body class="theme-dark">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><span></span></span><span class="brand-name">planview<span class="brand-period">.</span></span><span class="brand-divider"></span><span class="product-name">Spatial intelligence</span></div>
+      <div class="search-wrap"><span class="icon search-icon" data-icon="search"></span><input id="search" type="search" placeholder="Search address, place or parcel" aria-label="Search address, place or parcel" autocomplete="off"><kbd>⌘ K</kbd><div id="search-results" class="search-results" hidden></div></div>
+      <div class="header-actions"><span class="data-badge"><span class="pulse"></span> PDOK PLAN DATA</span><button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme" title="Switch color theme"><span data-icon="moon"></span></button><button id="mobile-layers" class="icon-button mobile-only" type="button" aria-label="Open layers"><span data-icon="layers"></span></button></div>
+    </header>
+    <div class="workspace">
+      <aside class="sidebar" id="sidebar" aria-label="Map controls">
+        <div class="panel-heading"><div><span class="eyebrow">EXPLORE</span><h1>Limburg</h1><p>Official plan geometry across the province.</p></div><button id="close-layers" class="icon-button mobile-only" aria-label="Close layers"><span data-icon="x"></span></button></div>
+        <div class="select-wrap"><label for="municipality">MUNICIPALITY</label><div class="fake-select"><span data-icon="map-pin"></span><select id="municipality"><option value="all">All Limburg · 31 municipalities</option></select><span data-icon="chevron-down"></span></div></div>
+        <div class="sidebar-scroll">
+          <section class="control-section"><div class="section-title"><h2>Official map layers</h2><span id="layer-count">6 active</span></div><div id="layer-list" class="layer-list"></div></section>
+          <section class="control-section legend-section"><div class="section-title"><h2>Plankaart legend</h2><button id="reset-filters" class="quiet-action" type="button">Reset</button></div><p class="section-help">Exact PDOK category colors. Fine symbols appear when zoomed in.</p><div id="legend-active" class="legend-active"></div><div id="legend" class="legend"></div><details class="official-symbols"><summary>Official line and hatch symbols</summary><div id="symbol-legends"></div></details></section>
+          <section class="control-section research-section"><div class="section-title"><h2>Saved research</h2><span id="saved-count">0 areas</span></div><p class="section-help">Keep working locations on this device for a planning case.</p><div id="saved-areas" class="saved-areas"></div></section>
+        </div>
+        <div class="sidebar-footer"><span data-icon="info"></span><p>PDOK plan map and cadastre. Confirm legal effect in the Omgevingsloket.</p></div>
+      </aside>
+      <main class="map-stage" aria-label="Interactive map of Limburg zoning">
+        <div id="map" role="application" aria-label="Interactive zoning map. Select a colored area for details."></div>
+        <div id="perspective-map" class="perspective-map" role="application" aria-label="Interactive perspective map of planning areas" hidden></div>
+        <div class="map-top"><div class="view-chip"><span data-icon="grid"></span><span id="view-label">Limburg plan overview</span><span class="chip-separator"></span><span id="area-count">Official PDOK layers</span></div><div class="map-top-actions"><button class="map-action" id="fit-city" type="button"><span data-icon="maximize"></span><span>Fit province</span></button><button class="map-action" id="basemap-toggle" type="button"><span data-icon="image"></span><span id="basemap-name">Map</span></button></div></div>
+        <div class="view-tools"><button class="map-action" id="render-toggle" type="button" aria-label="Switch between clean and official map rendering" aria-pressed="false" title="Switch between clean and official map rendering"><span data-icon="layers"></span><span id="render-mode-label">Clean view</span></button><button class="map-action" id="perspective-toggle" type="button" aria-label="Switch perspective map view" aria-pressed="false" title="Interactive perspective view; plan boundaries remain 2D source data"><span data-icon="building"></span><span id="perspective-label">Perspective</span></button></div>
+        <div class="map-bottom"><div class="map-hint"><span class="hint-cursor" data-icon="mouse-pointer"></span><span>Choose a municipality, then zoom in and click a plan area</span></div><div class="map-attribution">Prototype · Limburg · <span id="coordinates">51.25000° N, 5.90000° E</span></div></div>
+        <div id="app-toast" class="toast" role="status" hidden></div>
+        <button id="mobile-details" class="mobile-detail-cta mobile-only" type="button">View plan details <span data-icon="arrow-right"></span></button>
+      </main>
+      <aside class="detail-panel" id="detail-panel" aria-label="Selected area details"><div id="detail-content"></div></aside>
+    </div>
+  </div>
+</body>
+</html>
