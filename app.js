@@ -4,6 +4,7 @@ document.querySelectorAll('[data-icon]').forEach(el=>el.innerHTML=icon(el.datase
 // Live public services; only these URLs need changing when swapping data providers.
 const PLAN_WMS='https://service.pdok.nl/kadaster/ruimtelijke-plannen/wms/v1_0';
 const CAD_WMS='https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0';
+const NOVEX_WMS='https://service.pdok.nl/bzk/novexwoningbouwlocaties/wms/v1_0';
 const BGT_BASE='https://service.pdok.nl/kadaster/bgt/wmts/v1_0/achtergrondvisualisatie/EPSG:3857/{z}/{x}/{y}.png';
 const OFFICIAL='https://omgevingswet.overheid.nl/regels-op-de-kaart/';
 const FOCUS={lat:50.853961,lng:5.686554,address:'Maagdendries 49, Maastricht',rd:'176080.7, 318279.8'};
@@ -17,7 +18,8 @@ const layerDefs=[
  {id:'area',label:'Area designations',icon:'map',wms:'gebiedsaanduiding',on:true},
  {id:'dimensions',label:'Dimensions',icon:'ruler',wms:'maatvoering',on:false},
  {id:'planBounds',label:'Plan boundaries',icon:'maximize',wms:'plangebied',on:false},
- {id:'parcels',label:'Cadastral parcels',icon:'hash',group:'GROUND DETAIL',wms:'Perceelvlak',on:true,cad:true}
+ {id:'parcels',label:'Cadastral parcels',icon:'hash',group:'GROUND DETAIL',wms:'Perceelvlak',on:true,cad:true},
+ {id:'novex',label:'NOVEX planned housing locations',icon:'building',group:'DEVELOPMENT CONTEXT',wms:'novex_woningbouwlocaties',on:false,novex:true}
 ];
 const legendItems=[
  ['agrarisch','Agricultural','#ebf0d2'],['agrarisch met waarden','Agricultural values','#d2e1a5'],['bedrijf','Business','#b45fd2'],['bedrijventerrein','Industrial estate','#c8a0d7'],['bos','Forest','#64aa2d'],['centrum','Centre','#ffc8be'],['cultuur en ontspanning','Culture & leisure','#ff3c82'],['detailhandel','Retail','#ffa096'],['dienstverlening','Services','#f091be'],['gemengd','Mixed use','#ffbe87'],['groen','Green','#28c846'],['horeca','Hospitality','#ff6923'],['infrastructuur','Infrastructure','#cdcdcd'],['kantoor','Office','#ebc3d7'],['maatschappelijk','Civic','#dc9b78'],['natuur','Nature','#82a591'],['recreatie','Recreation','#b9d746'],['sport','Sport','#82c846'],['tuin','Garden','#c8d76e'],['verkeer','Traffic','#cdcdcd'],['ontspanning en vermaak','Leisure','#ff3c82'],['water','Water','#afcde1'],['wonen','Residential','#ffff00'],['woongebied','Residential area','#ffffb4'],['overig','Other','#ebe1eb']
@@ -43,7 +45,7 @@ function initMap(){
     bgt:L.tileLayer(BGT_BASE,{attribution:'© PDOK / Kadaster BGT',minZoom:15,maxZoom:19}),
     aerial:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles © Esri',maxZoom:19})
   };
-  for(const d of layerDefs)state.planLayers[d.id]=L.tileLayer.wms(d.cad?CAD_WMS:PLAN_WMS,{layers:d.wms,format:'image/png',transparent:true,version:'1.3.0',opacity:d.id==='parcels'?.85:1,maxZoom:19,updateWhenZooming:false,updateWhenIdle:true,updateInterval:200,keepBuffer:2,attribution:d.cad?'© PDOK / Kadaster':'© PDOK Ruimtelijke plannen'});
+  for(const d of layerDefs)state.planLayers[d.id]=L.tileLayer.wms(d.novex?NOVEX_WMS:d.cad?CAD_WMS:PLAN_WMS,{layers:d.wms,format:'image/png',transparent:true,version:'1.3.0',opacity:d.id==='parcels'?.85:1,maxZoom:19,updateWhenZooming:false,updateWhenIdle:true,updateInterval:200,keepBuffer:2,attribution:d.novex?'© BZK / PDOK NOVEX':d.cad?'© PDOK / Kadaster':'© PDOK Ruimtelijke plannen'});
   updateBase();updateLayers();updateViewLabel();
   map.on('zoomend',()=>{updateBase();updateViewLabel();updateLayers();});
   map.on('click',e=>selectPoint(e.latlng));
@@ -84,11 +86,11 @@ function wireCaseActions(){document.getElementById('save-area')?.addEventListene
 function showToast(message){const toast=document.getElementById('app-toast');toast.textContent=message;toast.hidden=false;clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>toast.hidden=true,3500);}
 function navigateToPoint(p,zoom=17){state.map.flyTo([p.lat,p.lng],zoom,{duration:.65});state.perspectiveMap?.flyTo({center:[p.lng,p.lat],zoom,duration:650});}
 function navigateToBounds(bounds){state.map.fitBounds(boundsOf(bounds),{padding:[30,30],animate:true});state.perspectiveMap?.fitBounds([[bounds[1],bounds[0]],[bounds[3],bounds[2]]],{padding:30,duration:650});}
-function mapOpacity(d,zoom){if(state.mapStyle==='official')return 1;return d.id==='zoning'?(zoom>=12?.72:.46):d.id==='building'?.55:d.id==='parcels'?.62:.28;}
+function mapOpacity(d,zoom){if(state.mapStyle==='official')return 1;return d.id==='zoning'?(zoom>=12?.72:.46):d.id==='building'?.55:d.id==='parcels'?.62:d.id==='novex'?.85:.28;}
 function perspectiveStyle(){
   const sources={osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'},bgt:{type:'raster',tiles:[BGT_BASE],tileSize:256,attribution:'© PDOK / Kadaster BGT'},aerial:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Tiles © Esri'},region:{type:'geojson',data:{type:'FeatureCollection',features:[]}},selection:{type:'geojson',data:{type:'FeatureCollection',features:[]}}};
   const layers=[{id:'base-osm',type:'raster',source:'osm'},{id:'base-bgt',type:'raster',source:'bgt',layout:{visibility:'none'}},{id:'base-aerial',type:'raster',source:'aerial',layout:{visibility:'none'}}];
-  for(const d of layerDefs){const endpoint=d.cad?CAD_WMS:PLAN_WMS;sources[`source-${d.id}`]={type:'raster',tiles:[`${endpoint}?service=WMS&request=GetMap&version=1.3.0&layers=${encodeURIComponent(d.wms)}&styles=&format=image/png&transparent=true&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256`],tileSize:256,attribution:d.cad?'© PDOK / Kadaster':'© PDOK Ruimtelijke plannen'};layers.push({id:`plan-${d.id}`,type:'raster',source:`source-${d.id}`,layout:{visibility:d.on?'visible':'none'},paint:{'raster-opacity':mapOpacity(d,16),'raster-fade-duration':120}});}
+  for(const d of layerDefs){const endpoint=d.novex?NOVEX_WMS:d.cad?CAD_WMS:PLAN_WMS;sources[`source-${d.id}`]={type:'raster',tiles:[`${endpoint}?service=WMS&request=GetMap&version=1.3.0&layers=${encodeURIComponent(d.wms)}&styles=&format=image/png&transparent=true&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=256&height=256`],tileSize:256,attribution:d.novex?'© BZK / PDOK NOVEX':d.cad?'© PDOK / Kadaster':'© PDOK Ruimtelijke plannen'};layers.push({id:`plan-${d.id}`,type:'raster',source:`source-${d.id}`,layout:{visibility:d.on?'visible':'none'},paint:{'raster-opacity':mapOpacity(d,16),'raster-fade-duration':120}});}
   layers.push({id:'municipality-lines',type:'line',source:'region',filter:['==',['get','kind'],'municipality'],paint:{'line-color':'#9eead6','line-width':1,'line-opacity':.55}},{id:'province-line',type:'line',source:'region',filter:['==',['get','kind'],'province'],paint:{'line-color':'#42e4b3','line-width':2.5,'line-dasharray':[3,2]}},{id:'selected-fill',type:'fill',source:'selection',filter:['==',['get','kind'],'designation'],paint:{'fill-color':'#72e4c5','fill-opacity':.2}},{id:'selected-outline',type:'line',source:'selection',filter:['==',['get','kind'],'designation'],paint:{'line-color':'#082d3b','line-width':4}},{id:'parcel-outline',type:'line',source:'selection',filter:['==',['get','kind'],'parcel'],paint:{'line-color':'#fff','line-width':2.5,'line-dasharray':[2,2]}},{id:'selected-pin',type:'circle',source:'selection',filter:['==',['get','kind'],'pin'],paint:{'circle-radius':7,'circle-color':'#74e8c3','circle-stroke-color':'#0e2833','circle-stroke-width':3}});
   return {version:8,sources,layers};
 }
@@ -107,10 +109,10 @@ async function initPerspective(){
 }
 function updatePerspectiveRegion(){if(!state.perspectiveReady||!state.region)return;const features=state.region.municipalities.map(m=>({type:'Feature',geometry:m.geometry,properties:{kind:'municipality',name:m.name}}));features.push({type:'Feature',geometry:state.region.province.geometry,properties:{kind:'province'}});state.perspectiveMap.getSource('region').setData({type:'FeatureCollection',features});}
 function updatePerspectiveSelection(){if(!state.perspectiveReady)return;const selected=state.selected,p=selected?.point;const features=[];if(selected?.primary?.geometry){const f=geoToLatLng(selected.primary);f.properties={...f.properties,kind:'designation'};features.push(f);}if(selected?.parcel?.geometry){const f=geoToLatLng(selected.parcel);f.properties={...f.properties,kind:'parcel'};features.push(f);}if(p)features.push({type:'Feature',geometry:{type:'Point',coordinates:[p.lng,p.lat]},properties:{kind:'pin'}});state.perspectiveMap.getSource('selection').setData({type:'FeatureCollection',features});}
-function updatePerspectiveLayers(){if(!state.perspectiveReady)return;const map=state.perspectiveMap,zoom=map.getZoom(),detailed=zoom>=12,base=state.aerial?'aerial':zoom>=15?'bgt':'osm';for(const name of ['osm','bgt','aerial'])map.setLayoutProperty(`base-${name}`,'visibility',name===base?'visible':'none');for(const d of layerDefs){map.setLayoutProperty(`plan-${d.id}`,'visibility',d.on&&(d.id==='zoning'||detailed)?'visible':'none');map.setPaintProperty(`plan-${d.id}`,'raster-opacity',mapOpacity(d,zoom));}map.setLayoutProperty('municipality-lines','visibility',zoom<13?'visible':'none');if(state.perspective){document.getElementById('area-count').textContent=detailed?'PDOK plan layers':'Zoom for fine layers';document.getElementById('basemap-name').textContent=state.aerial?'Aerial':zoom>=15?'BGT detail':'Map';}}
+function updatePerspectiveLayers(){if(!state.perspectiveReady)return;const map=state.perspectiveMap,zoom=map.getZoom(),detailed=zoom>=12,base=state.aerial?'aerial':zoom>=15?'bgt':'osm';for(const name of ['osm','bgt','aerial'])map.setLayoutProperty(`base-${name}`,'visibility',name===base?'visible':'none');for(const d of layerDefs){map.setLayoutProperty(`plan-${d.id}`,'visibility',d.on&&(d.id==='zoning'||d.id==='novex'||detailed)?'visible':'none');map.setPaintProperty(`plan-${d.id}`,'raster-opacity',mapOpacity(d,zoom));}map.setLayoutProperty('municipality-lines','visibility',zoom<13?'visible':'none');if(state.perspective){document.getElementById('area-count').textContent=detailed?'PDOK plan layers':'Zoom for fine layers';document.getElementById('basemap-name').textContent=state.aerial?'Aerial':zoom>=15?'BGT detail':'Map';}}
 async function togglePerspective(){const button=document.getElementById('perspective-toggle'),label=document.getElementById('perspective-label'),container=document.getElementById('perspective-map');if(state.perspective){state.perspective=false;const center=state.perspectiveMap.getCenter();state.map.setView([center.lat,center.lng],state.perspectiveMap.getZoom(),{animate:false});container.hidden=true;button.setAttribute('aria-pressed','false');label.textContent='Perspective';state.map.invalidateSize();updateBase();updateLayers();updateViewLabel();return;}button.disabled=true;label.textContent='Loading…';container.hidden=false;try{if(!state.perspectiveMap)await initPerspective();else{const center=state.map.getCenter();state.perspectiveMap.jumpTo({center:[center.lng,center.lat],zoom:state.map.getZoom(),pitch:56,bearing:-18});state.perspectiveMap.resize();}state.perspective=true;button.setAttribute('aria-pressed','true');label.textContent='Top-down';updatePerspectiveLayers();updateViewLabel();showToast('Perspective tilts the published 2D plan map; heights are not represented.');}catch(error){container.hidden=true;label.textContent='Perspective';showToast('Perspective view is unavailable here.');console.error(error);}finally{button.disabled=false;}}
 function updateBase(){const map=state.map;if(!map)return;const chosen=state.aerial?state.base.aerial:map.getZoom()>=15?state.base.bgt:state.base.osm;for(const base of Object.values(state.base))if(map.hasLayer(base)&&base!==chosen)map.removeLayer(base);if(!map.hasLayer(chosen))chosen.addTo(map);chosen.bringToBack();document.getElementById('basemap-name').textContent=state.aerial?'Aerial':map.getZoom()>=15?'BGT detail':'Map';updatePerspectiveLayers();}
-function updateLayers(){const map=state.map;updateLayerCount();renderSymbolLegends();if(!map)return;const detailed=map.getZoom()>=12;for(const d of layerDefs){const layer=state.planLayers[d.id],visible=d.on&&(d.id==='zoning'||detailed);if(visible&&!map.hasLayer(layer))layer.addTo(map);if(!visible&&map.hasLayer(layer))map.removeLayer(layer);layer.setOpacity(mapOpacity(d,map.getZoom()));}updateBoundaryVisibility();document.getElementById('area-count').textContent=detailed?'PDOK plan layers':'Zoom for fine layers';updatePerspectiveLayers();}
+function updateLayers(){const map=state.map;updateLayerCount();renderSymbolLegends();if(!map)return;const detailed=map.getZoom()>=12;for(const d of layerDefs){const layer=state.planLayers[d.id],visible=d.on&&(d.id==='zoning'||d.id==='novex'||detailed);if(visible&&!map.hasLayer(layer))layer.addTo(map);if(!visible&&map.hasLayer(layer))map.removeLayer(layer);layer.setOpacity(mapOpacity(d,map.getZoom()));}updateBoundaryVisibility();document.getElementById('area-count').textContent=detailed?'PDOK plan layers':'Zoom for fine layers';updatePerspectiveLayers();}
 function mercator(p){const r=6378137;return [r*p.lng*Math.PI/180,r*Math.log(Math.tan(Math.PI/4+p.lat*Math.PI/360))];}
 function featureUrl(endpoint,layer,p,format='application/json; subtype=geojson',count=30){const [x,y]=mercator(p);const half=95;const params=new URLSearchParams({service:'WMS',version:'1.3.0',request:'GetFeatureInfo',layers:layer,query_layers:layer,CRS:'EPSG:3857',bbox:`${x-half},${y-half},${x+half},${y+half}`,width:'512',height:'512',i:'256',j:'256',feature_count:String(count),info_format:format});return `${endpoint}?${params}`;}
 function parseCollections(raw){const all=[];let start=-1,depth=0,inString=false,slash=false;for(let i=0;i<raw.length;i++){const c=raw[i];if(start<0){if(c==='{'){start=i;depth=1;}continue;}if(inString){if(slash)slash=false;else if(c==='\\')slash=true;else if(c==='"')inString=false;continue;}if(c==='"'){inString=true;continue;}if(c==='{')depth++;else if(c==='}'){depth--;if(depth===0){try{const data=JSON.parse(raw.slice(start,i+1));if(Array.isArray(data.features))all.push(...data.features);}catch{}start=-1;}}}return all;}
@@ -208,5 +210,73 @@ function wireControls(){
   document.getElementById('mobile-details').onclick=()=>document.getElementById('detail-panel').classList.add('open');
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.getElementById('search').focus();}if(e.key==='Escape'){document.getElementById('sidebar').classList.remove('open');document.getElementById('detail-panel').classList.remove('open');document.getElementById('search-results').hidden=true;}});
 }
-function init(){loadSaved();renderLayers();renderLegend();initMap();wireControls();initSearch();renderWelcome();loadRegion().catch(()=>{document.getElementById('municipality').innerHTML='<option value="all">Limburg</option>';});}
+// A bounded point sample of the current viewport. Results are leads for research,
+// not a complete spatial query or a determination of development rights.
+const areaScreen={ticket:0,results:[],overlay:null};
+function areaSamplePoints(){
+  const bounds=state.map.getBounds(),candidates=[];
+  for(let row=0;row<14;row++)for(let col=0;col<14;col++){
+    const p={lat:bounds.getSouth()+(row+.5)/14*(bounds.getNorth()-bounds.getSouth()),lng:bounds.getWest()+(col+.5)/14*(bounds.getEast()-bounds.getWest())};
+    if(inLimburg(p)&&(state.municipality==='all'||municipalityAt(p)?.code===state.municipality))candidates.push(p);
+  }
+  // Spread a bounded set of requests across the full visible Limburg shape.
+  const count=Math.min(24,candidates.length);
+  return Array.from({length:count},(_,i)=>candidates[Math.floor((i+.5)*candidates.length/count)]);
+}
+function drawAreaScreen(){
+  if(!areaScreen.overlay)return;
+  areaScreen.overlay.clearLayers();
+  if(!document.getElementById('opportunity-toggle').checked)return;
+  for(const result of areaScreen.results){
+    if(!['wonen','woongebied','gemengd'].includes(result.group))continue;
+    const geo=geoToLatLng(result.feature);
+    if(geo)L.geoJSON(geo,{style:{color:'#faac58',weight:2.5,dashArray:'6 4',fillColor:'#faac58',fillOpacity:.14},interactive:false}).addTo(areaScreen.overlay);
+    L.circleMarker([result.point.lat,result.point.lng],{radius:7,color:'#4a2c18',weight:2,fillColor:'#ffb868',fillOpacity:1,interactive:false}).addTo(areaScreen.overlay);
+  }
+}
+function renderAreaScreen(){
+  const box=document.getElementById('area-search-results');
+  box.innerHTML=areaScreen.results.map((r,i)=>`<button type="button" class="area-result" data-area-result="${i}"><strong>${esc(r.name)}</strong><span>${esc(r.group)} · ${esc(r.status||'status to verify')} · ${esc(r.municipality||'Limburg')}</span><small>${esc(planTitle(r.sourceId))} · ${esc(r.sourceId||'source ID unavailable')}</small></button>`).join('');
+  box.querySelectorAll('[data-area-result]').forEach(el=>el.onclick=()=>{const r=areaScreen.results[Number(el.dataset.areaResult)];navigateToPoint(r.point,17);selectPoint(r.point);if(window.innerWidth<=900)document.getElementById('sidebar').classList.remove('open');});
+  drawAreaScreen();
+}
+async function runAreaSearch(screenBuilding=false){
+  const ticket=++areaScreen.ticket,button=document.getElementById('run-area-search'),status=document.getElementById('area-search-status');
+  const category=screenBuilding?'residential':document.getElementById('area-designation').value,requiredStatus=screenBuilding?'any':document.getElementById('area-status').value;
+  const idQuery=screenBuilding?'':document.getElementById('area-plan-query').value.trim().toLowerCase();
+  const requireBuilding=!screenBuilding&&document.getElementById('area-building').checked;
+  const points=areaSamplePoints(),found=new Map();let failed=0;
+  button.disabled=true;status.textContent=`Scanning ${points.length} sample locations on the visible map…`;
+  for(let offset=0;offset<points.length;offset+=4){
+    const batch=await Promise.allSettled(points.slice(offset,offset+4).map(async p=>{
+      const features=await fetchFeatures(PLAN_WMS,'enkelbestemming',p);
+      const exact=features.filter(f=>{const geo=geoToLatLng(f);return geo?.geometry&&geometryContains(geo.geometry,p);});
+      const feature=exact.length?choosePrimary(exact,p):null;
+      if(feature&&requireBuilding){
+        const buildings=await fetchFeatures(PLAN_WMS,'bouwvlak',p);
+        const intersects=buildings.some(f=>{const geo=geoToLatLng(f);return f.properties?.plangebied===feature.properties?.plangebied&&geo?.geometry&&geometryContains(geo.geometry,p);});
+        if(!intersects)return {p,feature:null};
+      }
+      return {p,feature};
+    }));
+    if(ticket!==areaScreen.ticket)return;
+    for(const item of batch){if(item.status==='rejected'){failed++;continue;}if(!item.value.feature)continue;
+      const {p,feature}=item.value,prop=feature.properties||{},group=(prop.bestemmingshoofdgroep||'').toLowerCase().trim(),planStatus=(prop.planstatus||'').toLowerCase();
+      if(category==='residential'?!['wonen','woongebied','gemengd'].includes(group):category!=='any'&&category!==group)continue;
+      if(requiredStatus!=='any'&&requiredStatus!==planStatus)continue;
+      if(idQuery&&!String(prop.plangebied||'').toLowerCase().includes(idQuery))continue;
+      const key=prop.identificatie||`${prop.plangebied}:${prop.naam}:${p.lat.toFixed(3)}:${p.lng.toFixed(3)}`;
+      if(!found.has(key))found.set(key,{point:p,feature,group,name:prop.naam||group,status:prop.planstatus,sourceId:prop.plangebied,municipality:municipalityAt(p)?.name});
+    }
+    status.textContent=`Scanned ${Math.min(offset+4,points.length)} of ${points.length} sample locations…`;
+  }
+  areaScreen.results=[...found.values()].slice(0,40);renderAreaScreen();button.disabled=false;
+  status.textContent=`${areaScreen.results.length} matching plan area${areaScreen.results.length===1?'':'s'} found in ${points.length} samples. Zoom in and scan again for more detail.${failed?' Some PDOK requests failed; results may be incomplete.':''}`;
+}
+function initAreaSearch(){
+  areaScreen.overlay=L.layerGroup().addTo(state.map);
+  document.getElementById('run-area-search').onclick=()=>runAreaSearch();
+  document.getElementById('opportunity-toggle').onchange=e=>{if(e.target.checked){document.getElementById('area-designation').value='any';runAreaSearch(true);}else{areaScreen.ticket++;drawAreaScreen();document.getElementById('run-area-search').disabled=false;}};
+}
+function init(){loadSaved();renderLayers();renderLegend();initMap();wireControls();initSearch();initAreaSearch();renderWelcome();loadRegion().catch(()=>{document.getElementById('municipality').innerHTML='<option value="all">Limburg</option>';});}
 window.addEventListener('load',init);
