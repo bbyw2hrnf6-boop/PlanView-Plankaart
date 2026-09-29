@@ -1,0 +1,108 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "wonen",
+          "woongebied",
+          "gemengd",
+          "bedrijf",
+          "bedrijventerrein",
+          "centrum",
+          "groen",
+          "natuur",
+          "water",
+          "verkeer",
+          "maatschappelijk",
+          "agrarisch",
+          "bos",
+          "kantoor",
+          "detailhandel",
+          "horeca"
+        ]
+      },
+      "description": "Official primary zoning categories requested by the user; empty means any category."
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "vastgesteld",
+          "onherroepelijk"
+        ]
+      },
+      "description": "Plan status requested: vastgesteld is adopted, onherroepelijk is final; empty means any."
+    },
+    "requireEnvelope": {
+      "type": "boolean",
+      "description": "True if the user asks for a bouwvlak, Baufenster, or building envelope at the sample point."
+    },
+    "requireUnbuilt": {
+      "type": "boolean",
+      "description": "True if the user asks for unbuilt/vacant land or no mapped building footprint at the sample point."
+    },
+    "nearCamping": {
+      "type": "boolean",
+      "description": "True for proximity to a camping or caravan site; this is checked against PDOK TOP10NL features, approximately within 3 km."
+    },
+    "nearTown": {
+      "type": "boolean",
+      "description": "True for proximity to a town or village; checked against PDOK TOP10NL populated places, approximately within 6 km."
+    },
+    "nearFeatures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["station", "park", "sports", "cemetery", "swimming_pool", "marina"]
+      },
+      "description": "Nearby mapped place types requested: railway station, park, sports field/complex, cemetery, public swimming-pool complex, or marina. Checked against official ProRail and TOP10NL feature locations."
+    },
+    "avoidIndustry": {
+      "type": "boolean",
+      "description": "True for avoiding mapped industrial land use nearby. This is an approximate TOP10NL screening proxy, not proof that no industry exists."
+    },
+    "preferQuiet": {
+      "type": "boolean",
+      "description": "True for a quiet/silent preference. No sound-level dataset is connected, so results with this preference are review leads only."
+    },
+    "potentialBuildingLand": {
+      "type": "boolean",
+      "description": "True for potential new building ground. Screen for a bouwvlak and no mapped building footprint; never claim a building right."
+    },
+    "includeReviewLeads": {
+      "type": "boolean",
+      "description": "True when the user asks to see sites failing a bouwvlak or unbuilt check as separately labeled review leads, rather than silently dropping them."
+    },
+    "unsupported": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Requested conditions unavailable in connected datasets; never silently drop them."
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Short explanation of interpreted filters and any limits."
+    }
+  },
+  "required": [
+    "groups",
+    "statuses",
+    "requireEnvelope",
+    "requireUnbuilt",
+    "nearCamping",
+    "nearTown",
+    "nearFeatures",
+    "avoidIndustry",
+    "preferQuiet",
+    "potentialBuildingLand",
+    "includeReviewLeads",
+    "unsupported",
+    "explanation"
+  ]
+}

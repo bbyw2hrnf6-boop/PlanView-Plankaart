@@ -54,3 +54,54 @@
    the fold receives focus; only the sidebar and detail drawer should scroll. */
 html,body{overflow:clip}
 .app-shell{position:fixed;inset:0;width:100%;height:100dvh;overflow:clip}
+/* The advanced finder lives under the top search, leaving map layers in the sidebar. */
+.advanced-toggle{flex:none;border:1px solid rgba(113,226,189,.38);background:var(--mint-soft);color:var(--mint);border-radius:7px;padding:6px 9px;font-size:11px;font-weight:800;white-space:nowrap}
+.advanced-toggle:hover,.advanced-toggle[aria-expanded=true]{background:rgba(113,226,189,.2)}
+.advanced-panel{position:absolute;top:calc(100% + 9px);left:0;width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 86px);overflow:auto;background:var(--surface);border:1px solid var(--line2);border-radius:15px;box-shadow:0 28px 80px rgba(0,0,0,.45);padding:20px;z-index:2500;scrollbar-color:var(--line2) transparent}
+.advanced-panel[hidden]{display:none}
+.advanced-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.advanced-heading h2{font:800 18px Manrope,sans-serif;letter-spacing:-.035em}.advanced-heading .icon-button{font-size:23px;line-height:1;flex:none}
+.advanced-help,.advanced-caveat{font-size:11px;line-height:1.5;color:var(--muted);margin:10px 0 16px}.advanced-caveat{margin:14px 0 0;color:var(--subtle)}
+.advanced-panel label{display:block;color:var(--text);font-size:11px;font-weight:800;margin-bottom:7px}
+.advanced-panel textarea{display:block;width:100%;min-height:82px;resize:vertical;background:var(--surface2);border:1px solid var(--line2);border-radius:9px;padding:11px 12px;color:var(--text);font:12px/1.5 'DM Sans',sans-serif;outline:none}
+.advanced-panel textarea:focus{border-color:var(--mint)}.advanced-panel textarea::placeholder{color:var(--subtle)}
+.advanced-examples,.advanced-scope{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:10px}.advanced-examples button,.advanced-scope button{border:1px solid var(--line2);background:var(--surface2);color:var(--muted);border-radius:7px;padding:7px 9px;font-size:10px;font-weight:700}.advanced-examples button:hover,.advanced-scope button:hover,.advanced-scope button.active{border-color:var(--mint);color:var(--mint)}.advanced-scope{margin-top:16px;padding-top:13px;border-top:1px solid var(--line)}.advanced-scope span{margin-left:auto;color:var(--subtle);font-size:10px}
+.advanced-parsed{border:1px solid var(--line);border-radius:9px;background:var(--surface2);padding:10px;margin-top:13px}.advanced-parsed[hidden]{display:none}.advanced-engine{color:var(--muted);font-size:10px;font-weight:700;margin-bottom:7px}.advanced-chips{display:flex;flex-wrap:wrap;gap:5px}.advanced-chips span{padding:5px 7px;border-radius:5px;background:var(--mint-soft);color:var(--mint);font-size:10px;font-weight:700}.advanced-warning{color:#f2bd7d;font-size:10px;line-height:1.45;margin:7px 0 0}
+.advanced-run{display:block;width:100%;margin-top:15px;padding:11px;background:var(--mint);color:#0a2528;border:0;border-radius:8px;font-size:12px;font-weight:800}.advanced-run:disabled{opacity:.55;cursor:wait}.advanced-status{min-height:15px;margin:10px 0;color:var(--muted);font-size:11px;line-height:1.4}
+.advanced-results{display:grid;gap:6px;max-height:270px;overflow:auto}.advanced-result{display:grid;grid-template-columns:27px 1fr;gap:10px;align-items:start;width:100%;text-align:left;border:1px solid var(--line);border-radius:9px;background:var(--surface2);color:var(--text);padding:10px}.advanced-result:hover{border-color:var(--mint);background:var(--surface3)}.advanced-result-num{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--mint);color:#102b2c;font-size:11px;font-weight:900}.advanced-result strong{display:block;font-size:12px}.advanced-result small,.advanced-result em{display:block;color:var(--muted);font-size:10px;margin-top:4px;font-style:normal}.advanced-result em{color:var(--mint)}.advanced-result .advanced-imro{color:var(--subtle);overflow-wrap:anywhere}
+#map.drawing-area{cursor:crosshair!important}#map.drawing-area *{cursor:crosshair!important}.smart-pin{display:grid;place-items:center;width:31px;height:31px;background:var(--mint);color:#0a2528;border:2px solid #09282c;border-radius:9px;box-shadow:0 0 0 4px rgba(113,226,189,.25),0 6px 18px rgba(0,0,0,.4);font-size:11px;font-weight:900;cursor:pointer}.smart-pin span{line-height:1}
+.advanced-draw-hint{position:absolute;z-index:1800;top:78px;left:50%;transform:translateX(-50%);max-width:min(420px,calc(100% - 30px));padding:10px 14px;border:1px solid var(--mint);border-radius:10px;background:var(--surface);box-shadow:0 10px 30px rgba(0,0,0,.3);color:var(--text);font-size:12px;font-weight:800;text-align:center;pointer-events:none}
+@media(max-width:900px){.advanced-panel{left:auto;right:0}.advanced-toggle{font-size:10px;padding:6px}}
+@media(max-width:640px){.advanced-toggle{font-size:0;width:32px;height:28px;padding:0}.advanced-toggle:before{content:'⋯';font-size:18px}.advanced-panel{position:fixed;top:66px;left:10px;right:10px;width:auto;max-height:calc(100dvh - 78px)}.search-wrap kbd{display:none}}
+/* Narrow in-app browsers keep both the ordinary and advanced search reachable. */
+@media(max-width:640px){
+  .topbar{height:104px;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:36px 38px;gap:5px 8px;padding:7px 10px}
+  .brand{grid-column:1;grid-row:1;min-width:0}.brand-divider,.product-name{display:none}
+  .header-actions{grid-column:2;grid-row:1;gap:5px}
+  .search-wrap{grid-column:1/-1;grid-row:2;width:100%;min-width:0}
+  .advanced-toggle{font-size:10px;width:auto;max-width:102px;height:28px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .advanced-toggle:before{content:none}
+  .advanced-panel{top:108px;max-height:calc(100dvh - 118px)}
+}
+.advanced-backend{display:inline-flex;align-items:center;margin-top:7px;padding:4px 7px;border-radius:6px;background:var(--mint-soft);color:var(--mint);font-size:10px;font-weight:800}
+
+/* Layer and legend definitions: a separate action never changes the layer switch. */
+.layer-row{padding:2px 4px;gap:2px;cursor:default}
+.layer-toggle{display:flex;align-items:center;gap:10px;min-width:0;flex:1;min-height:35px;cursor:pointer}
+.layer-row:focus-within,.legend-item:focus-within{background:var(--surface2)}
+.legend-name,.legend-active-copy{min-width:0;flex:1}
+.map-info-button{display:grid;place-items:center;flex:none;width:21px;height:21px;margin-left:auto;border:1px solid var(--line2);border-radius:50%;background:transparent;color:var(--muted);font-family:Georgia,serif;font-size:12px;font-weight:700;line-height:1;cursor:help}
+.map-info-button:hover,.map-info-button:focus-visible,.map-info-button[aria-expanded=true]{color:var(--mint);border-color:var(--mint);background:var(--mint-soft)}
+.map-info-tooltip{position:fixed;z-index:5000;width:min(260px,calc(100vw - 16px));padding:11px 13px;border:1px solid var(--line2);border-radius:10px;background:var(--surface2);box-shadow:var(--shadow);color:var(--text);font-size:11px;line-height:1.5;pointer-events:none}
+.map-info-tooltip[hidden]{display:none}
+
+/* The area selector and evidence stay visible while a spatial search progresses. */
+.advanced-scope label{margin:0;color:var(--muted);font-size:10px;white-space:nowrap}
+.advanced-scope select{min-width:174px;max-width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;background:var(--surface2);color:var(--text);font-size:10px;font-weight:700}
+.advanced-explanation{margin:0 0 8px;color:var(--muted);font-size:10px;line-height:1.45}
+.advanced-context-evidence{color:var(--mint)!important;line-height:1.45}
+.advanced-context-note{border-left:2px solid var(--mint);padding:7px 10px;color:var(--muted);font-size:10px;line-height:1.45;background:var(--surface2);border-radius:0 7px 7px 0}
+.advanced-result.review-result{border-color:rgba(240,155,85,.45)}
+.advanced-result.review-result em{color:#ffbd80}
+.advanced-result .advanced-envelope-source{color:var(--mint);overflow-wrap:anywhere}
+.advanced-result.review-result .advanced-result-num,.smart-pin.review-pin{background:#ffbd69;color:#33200c}
+@media(min-width:901px){.advanced-panel{position:fixed;top:82px;right:16px;left:auto;width:min(410px,calc(100vw - 32px));max-height:calc(100dvh - 98px)}}

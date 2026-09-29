@@ -28,9 +28,10 @@ const state={map:null,base:null,planLayers:{},detailLayers:{},selected:null,sele
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function wgs84ToRd(p){const f=.36*(p.lat-52.1551744),l=.36*(p.lng-5.38720621);const x=[[0,1,190094.945],[1,1,-11832.228],[2,1,-114.221],[0,3,-32.391],[1,0,-.705],[3,1,-2.34],[1,3,-.608],[0,2,-.008],[2,3,.148]];const y=[[1,0,309056.544],[0,2,3638.893],[2,0,73.077],[1,2,-157.984],[3,0,59.788],[0,1,.433],[2,2,-6.439],[1,1,-.032],[0,4,.092],[1,4,-.054]];return [155000+x.reduce((sum,[a,b,c])=>sum+c*f**a*l**b,0),463000+y.reduce((sum,[a,b,c])=>sum+c*f**a*l**b,0)];}
 function officialPlanLink(id,p){const rd=p?.rd||'';const match=/POINT\(([-0-9.]+) ([-0-9.]+)\)/.exec(rd)||/([-0-9.]+),\s*([-0-9.]+)/.exec(rd);const xy=match?[match[1],match[2]]:p?wgs84ToRd(p).map(value=>value.toFixed(1)):null;const location=xy?`?locatie-stelsel=RD&locatie-x=${encodeURIComponent(xy[0])}&locatie-y=${encodeURIComponent(xy[1])}`:'';return `${OFFICIAL}documenten/${encodeURIComponent(id)}/plekinfo${location}`;}
-function renderLayers(){let group='';const list=document.getElementById('layer-list');list.innerHTML=layerDefs.map(d=>{let heading='';if(d.group&&d.group!==group){group=d.group;heading=`<div class="layer-group-label">${group}</div>`;}return heading+`<label class="layer-row"><span class="layer-symbol">${icon(d.icon)}</span><span class="layer-label">${d.label}</span><input type="checkbox" data-layer="${d.id}" ${d.on?'checked':''}><span class="switch" aria-hidden="true"></span></label>`;}).join('');list.querySelectorAll('input').forEach(el=>el.addEventListener('change',()=>{const d=layerDefs.find(x=>x.id===el.dataset.layer);d.on=el.checked;updateLayers();if(d.on&&state.selected?.skippedLayers?.includes(d.id))loadOverlayForSelection(d,state.selected);}));updateLayerCount();}
+function infoButton(key,label){return `<button type="button" class="map-info-button" data-info="${esc(key)}" aria-label="About ${esc(label)}" aria-describedby="map-info-tooltip" aria-expanded="false">i</button>`;}
+function renderLayers(){let group='';const list=document.getElementById('layer-list');list.innerHTML=layerDefs.map(d=>{let heading='';if(d.group&&d.group!==group){group=d.group;heading=`<div class="layer-group-label">${group}</div>`;}return heading+`<div class="layer-row"><label class="layer-toggle"><span class="layer-symbol">${icon(d.icon)}</span><span class="layer-label">${esc(d.label)}</span><input type="checkbox" data-layer="${d.id}" ${d.on?'checked':''}><span class="switch" aria-hidden="true"></span></label>${infoButton(`layer:${d.id}`,d.label)}</div>`;}).join('');list.querySelectorAll('input').forEach(el=>el.addEventListener('change',()=>{const d=layerDefs.find(x=>x.id===el.dataset.layer);d.on=el.checked;updateLayers();if(d.on&&state.selected?.skippedLayers?.includes(d.id))loadOverlayForSelection(d,state.selected);}));updateLayerCount();}
 function updateLayerCount(){document.getElementById('layer-count').textContent=`${layerDefs.filter(x=>x.on).length} active`;}
-function renderLegend(){const selected=(state.selected?.primary?.properties?.bestemmingshoofdgroep||'').toLowerCase().trim(),matching=legendItems.find(item=>item[0]===selected);document.getElementById('legend-active').innerHTML=matching?`<span class="legend-color" style="background:${matching[2]}"></span><span><strong>Selected: ${esc(matching[1])}</strong><small>${esc(matching[0])} · PDOK category</small></span>`:'<span class="legend-active-empty">Select an area to match its official map category.</span>';document.getElementById('legend').innerHTML=legendItems.map(([dutch,english,color])=>`<div class="legend-item ${selected===dutch?'active':''}" title="${esc(dutch)} · ${esc(english)}"><span class="legend-color" style="background:${color}"></span><span>${esc(english)}<small>${esc(dutch)}</small></span></div>`).join('');renderSymbolLegends();}
+function renderLegend(){const selected=(state.selected?.primary?.properties?.bestemmingshoofdgroep||'').toLowerCase().trim(),matching=legendItems.find(item=>item[0]===selected);document.getElementById('legend-active').innerHTML=matching?`<span class="legend-color" style="background:${matching[2]}"></span><span class="legend-active-copy"><strong>Selected: ${esc(matching[1])}</strong><small>${esc(matching[0])} · PDOK category</small></span>${infoButton(`legend:${matching[0]}`,matching[1])}`:'<span class="legend-active-empty">Select an area to match its official map category.</span>';document.getElementById('legend').innerHTML=legendItems.map(([dutch,english,color])=>`<div class="legend-item ${selected===dutch?'active':''}" title="${esc(dutch)} · ${esc(english)}"><span class="legend-color" style="background:${color}"></span><span class="legend-name">${esc(english)}<small>${esc(dutch)}</small></span>${infoButton(`legend:${dutch}`,english)}</div>`).join('');renderSymbolLegends();}
 function renderSymbolLegends(){const target=document.getElementById('symbol-legends');if(!target)return;const labels={double:'Dual designations',building:'Building envelopes',function:'Function designations',area:'Area designations',dimensions:'Dimensions'};target.innerHTML=layerDefs.filter(d=>d.on&&labels[d.id]).map(d=>`<figure><figcaption>${labels[d.id]}</figcaption><img loading="lazy" src="./legend/legend-${d.wms}.png" alt="PDOK ${labels[d.id]} symbols"></figure>`).join('')||'<p class="section-help">Turn on a plan layer to see its symbols.</p>';}
 
 // Default 2D map: raster plan tiles over a street or BGT background.
@@ -48,7 +49,7 @@ function initMap(){
   for(const d of layerDefs)state.planLayers[d.id]=L.tileLayer.wms(d.novex?NOVEX_WMS:d.cad?CAD_WMS:PLAN_WMS,{layers:d.wms,format:'image/png',transparent:true,version:'1.3.0',opacity:d.id==='parcels'?.85:1,maxZoom:19,updateWhenZooming:false,updateWhenIdle:true,updateInterval:200,keepBuffer:2,attribution:d.novex?'© BZK / PDOK NOVEX':d.cad?'© PDOK / Kadaster':'© PDOK Ruimtelijke plannen'});
   updateBase();updateLayers();updateViewLabel();
   map.on('zoomend',()=>{updateBase();updateViewLabel();updateLayers();});
-  map.on('click',e=>selectPoint(e.latlng));
+  map.on('click',e=>{if(!window.planviewAdvanced?.drawing&&!window.planviewAdvanced?.suppressClick)selectPoint(e.latlng);});
   map.on('mousemove',e=>document.getElementById('coordinates').textContent=`${e.latlng.lat.toFixed(5)}° N, ${e.latlng.lng.toFixed(5)}° E`);
   setTimeout(()=>map.invalidateSize(),50);
 }
@@ -210,99 +211,5 @@ function wireControls(){
   document.getElementById('mobile-details').onclick=()=>document.getElementById('detail-panel').classList.add('open');
   document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.getElementById('search').focus();}if(e.key==='Escape'){document.getElementById('sidebar').classList.remove('open');document.getElementById('detail-panel').classList.remove('open');document.getElementById('search-results').hidden=true;}});
 }
-// A bounded point sample of the current viewport. Results are leads for research,
-// not a complete spatial query or a determination of development rights.
-const areaScreen={ticket:0,results:[],overlay:null,mode:'search'};
-const opportunityTerms={
-  nl:{'Residential or mixed designation':'Woon- of gemengde bestemming','Adopted or final plan':'Vastgesteld of onherroepelijk plan','Plan status needs review':'Planstatus nader te controleren','Building envelope intersects point':'Bouwvlak op dit punt','No building envelope at sample':'Geen bouwvlak op dit punt','Building envelope unknown':'Bouwvlak onbekend','Mapped building at sample':'Gebouw op dit punt geregistreerd','No mapped building at sample':'Geen gebouw op dit punt geregistreerd','Mapped building unknown':'Gebouwgegevens onbekend'},
-  de:{'Residential or mixed designation':'Wohn- oder Mischgebiet','Adopted or final plan':'Beschlossener oder rechtskräftiger Plan','Plan status needs review':'Planstatus weiter prüfen','Building envelope intersects point':'Baufenster an diesem Punkt','No building envelope at sample':'Kein Baufenster an diesem Punkt','Building envelope unknown':'Baufenster unbekannt','Mapped building at sample':'Gebäude an diesem Punkt erfasst','No mapped building at sample':'Kein Gebäude an diesem Punkt erfasst','Mapped building unknown':'Gebäudedaten unbekannt'}
-};
-const opportunityTerm=value=>opportunityTerms[document.documentElement.lang]?.[value]||value;
-function intersectsAt(feature,p){const geo=geoToLatLng(feature);return Boolean(geo?.geometry&&['Polygon','MultiPolygon'].includes(geo.geometry.type)&&geometryContains(geo.geometry,p));}
-function areaSamplePoints(){
-  const bounds=state.map.getBounds(),candidates=[];
-  for(let row=0;row<14;row++)for(let col=0;col<14;col++){
-    const p={lat:bounds.getSouth()+(row+.5)/14*(bounds.getNorth()-bounds.getSouth()),lng:bounds.getWest()+(col+.5)/14*(bounds.getEast()-bounds.getWest())};
-    if(inLimburg(p)&&(state.municipality==='all'||municipalityAt(p)?.code===state.municipality))candidates.push(p);
-  }
-  // Spread a bounded set of requests across the full visible Limburg shape.
-  const count=Math.min(24,candidates.length);
-  return Array.from({length:count},(_,i)=>candidates[Math.floor((i+.5)*candidates.length/count)]);
-}
-function drawAreaScreen(){
-  if(!areaScreen.overlay)return;
-  areaScreen.overlay.clearLayers();
-  if(!document.getElementById('opportunity-toggle').checked||areaScreen.mode!=='screen')return;
-  for(const result of areaScreen.results){
-    const score=result.score||1;
-    const marker=L.marker([result.point.lat,result.point.lng],{icon:L.divIcon({className:`opportunity-pin signal-${score}`,html:`<span>${score}/4</span>`,iconSize:[36,36],iconAnchor:[18,18]}),zIndexOffset:800}).addTo(areaScreen.overlay);
-    marker.bindTooltip(`<strong>${esc(result.name)}</strong><br>${score}/4 ${document.documentElement.lang==='nl'?'plansignalen':document.documentElement.lang==='de'?'Plansignale':'planning signals'} · ${esc(result.municipality||'Limburg')}<br>${result.checks.map(check=>esc(opportunityTerm(check))).join('<br>')}`,{direction:'top',className:'opportunity-tooltip'});
-    marker.on('click',e=>{L.DomEvent.stopPropagation(e.originalEvent);navigateToPoint(result.point,17);selectPoint(result.point);});
-  }
-}
-function renderAreaScreen(){
-  const box=document.getElementById('area-search-results');
-  box.innerHTML=areaScreen.results.map((r,i)=>`<button type="button" class="area-result" data-area-result="${i}"><strong>${areaScreen.mode==='screen'?`<b class="opportunity-score signal-${r.score||1}">${r.score||1}/4</b>`:''}${esc(r.name)}</strong><span>${esc(r.group)} · ${esc(r.status||'status to verify')} · ${esc(r.municipality||'Limburg')}</span>${areaScreen.mode==='screen'?`<span class="opportunity-checks">${r.checks.map(check=>`<em>${esc(opportunityTerm(check))}</em>`).join('')}</span>`:''}<small>${esc(planTitle(r.sourceId))} · ${esc(r.sourceId||'source ID unavailable')}</small></button>`).join('');
-  box.querySelectorAll('[data-area-result]').forEach(el=>el.onclick=()=>{const r=areaScreen.results[Number(el.dataset.areaResult)];navigateToPoint(r.point,17);selectPoint(r.point);if(window.innerWidth<=900)document.getElementById('sidebar').classList.remove('open');});
-  drawAreaScreen();
-}
-async function scoreOpportunity(result){
-  const p=result.point,sourceId=result.sourceId;
-  const [envelope,building]=await Promise.allSettled([fetchFeatures(PLAN_WMS,'bouwvlak',p),fetchFeatures(CAD_WMS,'Bebouwingvlak',p)]);
-  const hasEnvelope=envelope.status==='fulfilled'&&envelope.value.some(f=>f.properties?.plangebied===sourceId&&intersectsAt(f,p));
-  const mappedBuilding=building.status==='fulfilled'&&building.value.some(f=>intersectsAt(f,p));
-  const current=['onherroepelijk','vastgesteld'].includes((result.status||'').toLowerCase());
-  const checks=['Residential or mixed designation',current?'Adopted or final plan':'Plan status needs review',envelope.status==='rejected'?'Building envelope unknown':hasEnvelope?'Building envelope intersects point':'No building envelope at sample',building.status==='rejected'?'Mapped building unknown':mappedBuilding?'Mapped building at sample':'No mapped building at sample'];
-  return {...result,score:1+Number(current)+Number(hasEnvelope)+Number(hasEnvelope&&building.status==='fulfilled'&&!mappedBuilding),checks};
-}
-async function runAreaSearch(screenBuilding=false){
-  const ticket=++areaScreen.ticket,button=document.getElementById('run-area-search'),status=document.getElementById('area-search-status');
-  areaScreen.mode=screenBuilding?'screen':'search';
-  if(!screenBuilding)document.getElementById('opportunity-toggle').checked=false;
-  const category=screenBuilding?'residential':document.getElementById('area-designation').value,requiredStatus=screenBuilding?'any':document.getElementById('area-status').value;
-  const idQuery=screenBuilding?'':document.getElementById('area-plan-query').value.trim().toLowerCase();
-  const requireBuilding=!screenBuilding&&document.getElementById('area-building').checked;
-  const points=areaSamplePoints(),found=new Map();let failed=0;
-  button.disabled=true;status.textContent=`Scanning ${points.length} sample locations on the visible map…`;
-  for(let offset=0;offset<points.length;offset+=4){
-    const batch=await Promise.allSettled(points.slice(offset,offset+4).map(async p=>{
-      const features=await fetchFeatures(PLAN_WMS,'enkelbestemming',p);
-      const exact=features.filter(f=>intersectsAt(f,p));
-      const feature=exact.length?choosePrimary(exact,p):null;
-      if(feature&&requireBuilding){
-        const buildings=await fetchFeatures(PLAN_WMS,'bouwvlak',p);
-        const intersects=buildings.some(f=>f.properties?.plangebied===feature.properties?.plangebied&&intersectsAt(f,p));
-        if(!intersects)return {p,feature:null};
-      }
-      return {p,feature};
-    }));
-    if(ticket!==areaScreen.ticket)return;
-    for(const item of batch){if(item.status==='rejected'){failed++;continue;}if(!item.value.feature)continue;
-      const {p,feature}=item.value,prop=feature.properties||{},group=(prop.bestemmingshoofdgroep||'').toLowerCase().trim(),planStatus=(prop.planstatus||'').toLowerCase();
-      if(category==='residential'?!['wonen','woongebied','gemengd'].includes(group):category!=='any'&&category!==group)continue;
-      if(requiredStatus!=='any'&&requiredStatus!==planStatus)continue;
-      if(idQuery&&!String(prop.plangebied||'').toLowerCase().includes(idQuery))continue;
-      const key=prop.identificatie||`${prop.plangebied}:${prop.naam}:${p.lat.toFixed(3)}:${p.lng.toFixed(3)}`;
-      if(!found.has(key))found.set(key,{point:p,feature,group,name:prop.naam||group,status:prop.planstatus,sourceId:prop.plangebied,municipality:municipalityAt(p)?.name});
-    }
-    status.textContent=`Scanned ${Math.min(offset+4,points.length)} of ${points.length} sample locations…`;
-  }
-  let results=[...found.values()].slice(0,40);
-  if(screenBuilding){
-    status.textContent=`Checking building evidence for ${results.length} residential samples…`;
-    const scored=await Promise.all(results.map(result=>scoreOpportunity(result)));
-    if(ticket!==areaScreen.ticket)return;
-    results=scored.sort((a,b)=>b.score-a.score);
-  }
-  areaScreen.results=results;renderAreaScreen();button.disabled=false;
-  status.textContent=screenBuilding?`${results.length} development review points from ${points.length} samples. The score counts planning signals, not building rights.${failed?' Some PDOK requests failed; results may be incomplete.':''}`:`${results.length} matching plan area${results.length===1?'':'s'} found in ${points.length} samples. Zoom in and scan again for more detail.${failed?' Some PDOK requests failed; results may be incomplete.':''}`;
-}
-function initAreaSearch(){
-  areaScreen.overlay=L.layerGroup().addTo(state.map);
-  document.getElementById('run-area-search').onclick=()=>runAreaSearch();
-  document.getElementById('opportunity-toggle').onchange=e=>{if(e.target.checked){runAreaSearch(true);}else{areaScreen.ticket++;drawAreaScreen();document.getElementById('run-area-search').disabled=false;}};
-  document.getElementById('rescan-opportunities').onclick=()=>{document.getElementById('opportunity-toggle').checked=true;runAreaSearch(true);};
-  window.addEventListener('planview-language-change',()=>{if(areaScreen.results.length)renderAreaScreen();});
-}
-function init(){loadSaved();renderLayers();renderLegend();initMap();wireControls();initSearch();initAreaSearch();renderWelcome();loadRegion().catch(()=>{document.getElementById('municipality').innerHTML='<option value="all">Limburg</option>';});}
+function init(){loadSaved();renderLayers();renderLegend();initMap();wireControls();initSearch();renderWelcome();loadRegion().catch(()=>{document.getElementById('municipality').innerHTML='<option value="all">Limburg</option>';});}
 window.addEventListener('load',init);
