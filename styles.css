@@ -36,3 +36,21 @@
 .area-search-section #area-plan-query{width:100%;height:36px;background:var(--surface2);color:var(--text);border:1px solid var(--line2);border-radius:8px;padding:0 9px;font-size:12px}
 .area-search-section .area-check{display:flex!important;align-items:center;gap:8px;margin:12px 0 0!important;font-size:11px!important;font-weight:600!important;color:var(--text)!important;line-height:1.35}
 .area-search-section .area-check input{accent-color:var(--mint)}
+/* Planning-signal pins remain visible above the coloured plan map without
+   implying that an entire zoning polygon is vacant land. */
+.opportunity-pin{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#ffb04c;border:3px solid #251a12;color:#22150d;font-size:10px;font-weight:900;box-shadow:0 0 0 5px rgba(255,183,89,.28),0 3px 18px rgba(10,20,28,.58);cursor:pointer}
+.opportunity-pin span{line-height:1}
+.opportunity-pin.signal-4,.opportunity-score.signal-4{background:#f7c45a}
+.opportunity-pin.signal-3,.opportunity-score.signal-3{background:#ff9b56}
+.opportunity-pin.signal-2,.opportunity-score.signal-2{background:#aab7ba}
+.opportunity-pin.signal-1,.opportunity-score.signal-1{background:#88969b}
+.opportunity-tooltip{max-width:240px;line-height:1.5;white-space:normal;background:#102532;color:#f4faf9;border:1px solid #ffb04c;border-radius:9px;font-size:11px;box-shadow:var(--shadow)}
+.opportunity-tooltip:before{border-top-color:#102532!important}
+.opportunity-rescan{display:block;margin:6px 0 15px;padding:0;text-align:left}
+.opportunity-score{display:inline-grid;place-items:center;width:30px;height:24px;margin-right:8px;border-radius:7px;color:#1b1a14;font-size:10px;font-weight:900;vertical-align:middle}
+.opportunity-checks{display:flex!important;flex-wrap:wrap;gap:4px;margin-top:7px!important}
+.opportunity-checks em{display:inline-block;background:rgba(255,181,90,.12);border:1px solid rgba(255,181,90,.25);border-radius:5px;padding:3px 5px;font-style:normal;font-size:9px}
+/* Keep the fixed map workspace in the viewport when a sidebar control below
+   the fold receives focus; only the sidebar and detail drawer should scroll. */
+html,body{overflow:clip}
+.app-shell{position:fixed;inset:0;width:100%;height:100dvh;overflow:clip}

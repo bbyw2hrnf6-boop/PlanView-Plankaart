@@ -37,6 +37,16 @@
     'Turn on a plan layer to see its symbols.':'Planebene einschalten, um ihre Symbole zu sehen.',
     'BGT detail':'BGT-Detailkarte','Research aid only. Check current Omgevingsplan, supplementary rules and legal effect in Omgevingsloket.':'Nur Recherchehilfe. Aktuellen Omgevingsplan, ergänzende Regeln und Rechtswirkung im Omgevingsloket prüfen.'
   });
+  Object.assign(translations.nl,{
+    'Street map':'Stratenkaart','NOVEX major housing sites (limited)':'NOVEX grote woningbouwlocaties (beperkt)','Show development signals':'Toon ontwikkelsignalen','Rescan visible map':'Zichtbare kaart opnieuw scannen',
+    'Numbered markers compare four signals at sampled points: residential or mixed zoning, plan status, building envelope, and mapped building footprint. A 4/4 requires an unbuilt building envelope. Tap a marker to inspect its official plan.':'Genummerde punten vergelijken vier signalen: woon- of gemengde bestemming, planstatus, bouwvlak en geregistreerde bebouwing. Een 4/4 vereist een bouwvlak zonder geregistreerd gebouw. Klik op een punt om het officiële plan te bekijken.',
+    'This is a research screen, not a parcel-level buildability verdict. The NOVEX layer above covers only 17 major national sites and can be empty in Limburg.':'Dit is een onderzoekskaart, geen oordeel over de bouwbaarheid van een perceel. De NOVEX-laag hierboven bevat slechts 17 grote nationale locaties en kan in Limburg leeg zijn.'
+  });
+  Object.assign(translations.de,{
+    'Street map':'Straßenkarte','NOVEX major housing sites (limited)':'NOVEX große Wohnungsbaustandorte (begrenzt)','Show development signals':'Entwicklungssignale anzeigen','Rescan visible map':'Sichtbare Karte erneut prüfen',
+    'Numbered markers compare four signals at sampled points: residential or mixed zoning, plan status, building envelope, and mapped building footprint. A 4/4 requires an unbuilt building envelope. Tap a marker to inspect its official plan.':'Nummerierte Punkte vergleichen vier Signale: Wohn- oder Mischgebiet, Planstatus, Baufenster und erfasste Bebauung. Für 4/4 ist ein Baufenster ohne erfasstes Gebäude erforderlich. Einen Punkt anklicken, um den offiziellen Plan zu prüfen.',
+    'This is a research screen, not a parcel-level buildability verdict. The NOVEX layer above covers only 17 major national sites and can be empty in Limburg.':'Dies ist eine Recherchekarte, keine Aussage zur Bebaubarkeit eines Flurstücks. Die NOVEX-Ebene oben enthält nur 17 große nationale Standorte und kann in Limburg leer sein.'
+  });
   const originals=new WeakMap();
   let language='en',observer;
   function translate(){
@@ -57,10 +67,12 @@
       if(!translated){const scan=/^Scanning (\d+) sample locations on the visible map…$/.exec(trimmed);if(scan)translated=language==='nl'?`De zichtbare kaart op ${scan[1]} punten doorzoeken…`:language==='de'?`Sichtbare Karte an ${scan[1]} Punkten prüfen…`:trimmed;}
       if(!translated){const progress=/^Scanned (\d+) of (\d+) sample locations…$/.exec(trimmed);if(progress)translated=language==='nl'?`${progress[1]} van ${progress[2]} punten doorzocht…`:language==='de'?`${progress[1]} von ${progress[2]} Punkten geprüft…`:trimmed;}
       if(!translated){const result=/^(\d+) matching plan areas? found in (\d+) samples\. Zoom in and scan again for more detail\.( Some PDOK requests failed; results may be incomplete\.)?$/.exec(trimmed);if(result){translated=language==='nl'?`${result[1]} passende plangebieden gevonden op ${result[2]} punten. Zoom in en zoek opnieuw voor meer detail.`:language==='de'?`${result[1]} passende Plangebiete an ${result[2]} Punkten gefunden. Für mehr Details hineinzoomen und erneut suchen.`:trimmed;if(result[3]&&language==='nl')translated+=' Sommige PDOK-aanvragen mislukten; de resultaten kunnen onvolledig zijn.';if(result[3]&&language==='de')translated+=' Einige PDOK-Anfragen schlugen fehl; die Ergebnisse können unvollständig sein.';}}
+      if(!translated){const evidence=/^Checking building evidence for (\d+) residential samples…$/.exec(trimmed);if(evidence)translated=language==='nl'?`Bouwgegevens voor ${evidence[1]} woonlocaties controleren…`:language==='de'?`Gebäudedaten für ${evidence[1]} Wohnstandorte prüfen…`:trimmed;}
+      if(!translated){const signal=/^(\d+) development review points from (\d+) samples\. The score counts planning signals, not building rights\.( Some PDOK requests failed; results may be incomplete\.)?$/.exec(trimmed);if(signal){translated=language==='nl'?`${signal[1]} onderzoekspunten uit ${signal[2]} steekproeven. De score telt plansignalen, geen bouwrechten.`:language==='de'?`${signal[1]} Prüfpunkte aus ${signal[2]} Stichproben. Die Zahl zählt Plansignale, keine Baurechte.`:trimmed;if(signal[3]&&language==='nl')translated+=' Sommige PDOK-aanvragen mislukten; resultaten kunnen onvolledig zijn.';if(signal[3]&&language==='de')translated+=' Einige PDOK-Anfragen schlugen fehl; Ergebnisse können unvollständig sein.';}}
       if(translated)node.textContent=original.replace(trimmed,translated);else if(language==='en')node.textContent=original;
     }
     observer?.observe(document.body,{childList:true,subtree:true,characterData:true});
   }
-  window.planviewSetLanguage=code=>{language=translations[code]?code:'en';try{localStorage.setItem('planview-language',language);}catch{}translate();};
+  window.planviewSetLanguage=code=>{language=translations[code]?code:'en';try{localStorage.setItem('planview-language',language);}catch{}translate();window.dispatchEvent(new Event('planview-language-change'));};
   window.addEventListener('load',()=>{try{language=localStorage.getItem('planview-language')||'en';}catch{}const select=document.getElementById('language');select.value=language;select.onchange=()=>window.planviewSetLanguage(select.value);observer=new MutationObserver(()=>translate());translate();});
 })();
