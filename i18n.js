@@ -88,7 +88,7 @@
     const search=document.getElementById('search');if(search){search.placeholder=translations[language]?.['Search address, place or parcel']||'Search address, place or parcel';search.setAttribute('aria-label',search.placeholder);}
     const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
     while(node=walker.nextNode()){
-      if(node.parentElement?.closest('#map,#perspective-map,.detail-title-row h2,.detail-location,.source-card h4,.source-sub,.source-facts dd,.official-feature-row,.secondary-item strong,.secondary-item span,.provenance-row span,.area-result strong,.area-result small,#coordinates,.search-results'))continue;
+      if(node.parentElement?.closest('[data-pv-managed],#map,#perspective-map,.detail-title-row h2,.detail-location,.source-card h4,.source-sub,.source-facts dd,.official-feature-row,.secondary-item strong,.secondary-item span,.provenance-row span,.area-result strong,.area-result small,#coordinates,.search-results'))continue;
       const original=originals.get(node)??node.textContent;originals.set(node,original);
       const trimmed=original.trim();if(!trimmed)continue;
       let translated=translations[language]?.[trimmed];
