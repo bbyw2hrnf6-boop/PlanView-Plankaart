@@ -253,7 +253,18 @@
     setOpen,startDrawing,cancelDrawing:()=>{advanced.autoRunAfterDraw=false;exitDrawing();advanced.suppressClick=false;},
     cancel:()=>{advanced.ticket++;$('advanced-run').disabled=false;$('advanced-status').textContent=tr('Stopped. Any shown results are partial.','Gestopt. Getoonde resultaten zijn onvolledig.','Gestoppt. Angezeigte Ergebnisse sind unvollständig.');window.dispatchEvent(new CustomEvent('planview-search-busy',{detail:{busy:false}}));},
     runManual:spec=>runSearch(spec),
-    filterResults:value=>{advanced.filter=['all','matches','review'].includes(value)?value:'all';if(advanced.lastSpec)showResults(advanced.lastSpec);}
+    filterResults:value=>{advanced.filter=['all','matches','review'].includes(value)?value:'all';if(advanced.lastSpec)showResults(advanced.lastSpec);},
+    clearSearch:()=>{
+      advanced.ticket++;advanced.results=[];advanced.filter='all';advanced.lastSpec=null;advanced.overlay?.clearLayers();
+      if(advanced.preview){state.map.removeLayer(advanced.preview);advanced.preview=null;}
+      if(advanced.drawing)exitDrawing();
+      if(advanced.rectangle){state.map.removeLayer(advanced.rectangle);advanced.rectangle=null;}
+      advanced.bounds=null;advanced.autoRunAfterDraw=false;advanced.suppressClick=false;
+      $('advanced-query').value='';$('advanced-results').replaceChildren();$('advanced-parsed').hidden=true;
+      $('advanced-clear-area').hidden=true;$('advanced-scope-select').querySelector('[value="drawn"]').disabled=true;$('advanced-scope-select').value='view';$('advanced-scope-label').textContent=tr('Current map view','Huidige kaartweergave','Aktueller Kartenausschnitt');
+      $('advanced-run').disabled=false;$('advanced-status').textContent=tr('Search and map results cleared.','Zoekopdracht en kaartresultaten gewist.','Suche und Kartenergebnisse gelöscht.');
+      $('pv-clear-search')?.setAttribute('disabled','');window.dispatchEvent(new CustomEvent('planview-search-results'));window.dispatchEvent(new CustomEvent('planview-search-busy',{detail:{busy:false}}));
+    }
   });
   async function init(){
     advanced.overlay=L.layerGroup().addTo(state.map);initDrawing();
