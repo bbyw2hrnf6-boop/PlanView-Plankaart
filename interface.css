@@ -45,3 +45,56 @@ body[data-appearance="sand"]{--bg:#f4efe4;--surface:#fffaf0;--surface2:#f4edde;-
 
 .pv-clear-search{border:0;background:transparent;color:var(--muted);padding:7px 10px;font-size:11px;font-weight:700;border-radius:8px;white-space:nowrap}.pv-clear-search:hover:not(:disabled){color:var(--text);background:var(--surface2)}.pv-clear-search:disabled{opacity:.45;cursor:default}
 @media(max-width:600px){.pv-search-actions{flex-wrap:wrap}.pv-search-actions .advanced-run{flex:1 0 58%}.pv-clear-search{flex:0 0 auto;min-height:40px}}
+
+/* Desktop layer panel: one scroll surface, compact rows, no fixed notice overlay. */
+@media (min-width:901px) {
+  .sidebar{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .sidebar-scroll{min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:10px}
+  .sidebar-footer{position:static;flex:none;margin:12px 16px 0;padding:11px 0 0;border-top:1px solid var(--line);background:transparent}
+  .sidebar-footer p{line-height:1.45}
+  .sidebar-footer a{color:var(--mint);text-decoration:underline}
+  .sidebar .control-section{padding-block:14px}
+  .sidebar .layer-row{min-height:34px;padding-block:3px}
+  .sidebar .layer-toggle{min-height:34px}
+  .sidebar .layer-group-label{margin-top:9px;margin-bottom:3px}
+  .sidebar .layer-label{line-height:1.22;gap:1px}
+  .sidebar .pv-layer-state{font-size:9px}
+  .pv-street{bottom:19px;width:174px}
+  .pv-aerial{height:79px}
+  .pv-street-copy{padding:8px 10px}
+  .pv-street-copy>span{margin-bottom:3px}
+}
+
+/* Source-backed context remains visually lighter than the legal plankaart. */
+.pv-context-popup{color:#18332f;line-height:1.45;min-width:210px}
+.pv-context-popup strong,.pv-context-popup small,.pv-context-popup span{display:block}
+.pv-context-popup strong{font-size:14px;margin-bottom:3px}
+.pv-context-popup small{color:#58706b;margin-bottom:7px}
+.pv-context-popup span{font-size:12px;margin:3px 0}
+.pv-context-popup p{font-size:12px;margin:8px 0;color:#516760}
+.pv-context-popup a,.advanced-rule-link{color:#087f70;font-weight:700}
+.advanced-rule-link{display:block;font-size:12px;margin:-4px 14px 11px 48px;text-decoration:underline}
+.pv-layer-state[data-state="empty"]{color:#c48b43}
+
+/* Point-selected BAG evidence inside the existing Summary tab. */
+.pv-building-insights .metric-grid{margin-top:11px}
+.pv-building-id{font-size:11px;color:var(--muted);overflow-wrap:anywhere;margin:10px 0}
+.pv-building-unit-label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700;margin:13px 0;color:var(--text)}
+.pv-building-unit-label select{background:var(--surface2);color:var(--text);border:1px solid var(--line2);border-radius:8px;padding:9px;width:100%;min-width:0}
+.pv-building-links{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px}
+.pv-building-links a{font-size:11px;font-weight:700;color:var(--mint)}
+
+/* Point-level Bouwvlak evidence stays in the first Summary section. */
+.pv-envelope-summary{margin-top:16px;padding-top:15px;border-top:1px solid var(--line)}
+.pv-envelope-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}
+.pv-envelope-heading strong{font-size:12px;color:var(--text)}
+.pv-envelope-heading span{font-size:10px;color:var(--mint);font-weight:700}
+.pv-envelope-item{padding:12px;margin-top:8px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}
+.pv-envelope-item>strong{display:block;color:var(--text);font-size:12px;line-height:1.4}
+.pv-envelope-item>small{display:block;margin-top:3px;color:var(--muted);font-size:10px}
+.pv-envelope-item dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:10px 0}
+.pv-envelope-item dt{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.pv-envelope-item dd{margin:2px 0 0;font-size:10px;color:var(--text);overflow-wrap:anywhere}
+.pv-envelope-links{display:flex;gap:8px 12px;flex-wrap:wrap}
+.pv-envelope-links a{font-size:10px;font-weight:700;color:var(--mint);text-decoration:underline}
+.pv-envelope-note,.pv-envelope-caution{font-size:10px;line-height:1.5;color:var(--muted);margin:8px 0 0}

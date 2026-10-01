@@ -22,7 +22,8 @@
           "bos",
           "kantoor",
           "detailhandel",
-          "horeca"
+          "horeca",
+          "recreatie"
         ]
       },
       "description": "Official primary zoning categories requested by the user; empty means any category."
@@ -48,7 +49,7 @@
     },
     "nearCamping": {
       "type": "boolean",
-      "description": "True for proximity to a camping or caravan site; this is checked against PDOK TOP10NL features, approximately within 3 km."
+      "description": "True when the user seeks locations near a campsite or holiday park, outside or regardless of its boundary. Approximate distance to mapped PDOK TOP10NL site boundary."
     },
     "nearTown": {
       "type": "boolean",
@@ -58,7 +59,14 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["station", "park", "sports", "cemetery", "swimming_pool", "marina"]
+        "enum": [
+          "station",
+          "park",
+          "sports",
+          "cemetery",
+          "swimming_pool",
+          "marina"
+        ]
       },
       "description": "Nearby mapped place types requested: railway station, park, sports field/complex, cemetery, public swimming-pool complex, or marina. Checked against official ProRail and TOP10NL feature locations."
     },
@@ -88,6 +96,18 @@
     "explanation": {
       "type": "string",
       "description": "Short explanation of interpreted filters and any limits."
+    },
+    "insideCamping": {
+      "type": "boolean",
+      "description": "True only when the searched point must lie inside a mapped campsite, caravan park or holiday park boundary. Exact polygon containment is checked."
+    },
+    "accommodationIntent": {
+      "type": "string",
+      "enum": [
+        "none",
+        "accommodation"
+      ],
+      "description": "Use accommodation when the user asks about tiny houses, chalets, holiday accommodation or permanent residence. The app links plan rules but cannot verify permission automatically."
     }
   },
   "required": [
@@ -103,6 +123,8 @@
     "potentialBuildingLand",
     "includeReviewLeads",
     "unsupported",
-    "explanation"
+    "explanation",
+    "insideCamping",
+    "accommodationIntent"
   ]
 }
