@@ -77,18 +77,61 @@
     'Near train station':'Nahe Bahnhof','Near camping + town':'Bei Camping und Ort','Search area':'Suchgebiet','Current map view · Limburg':'Aktueller Kartenausschnitt · Limburg','Selected municipality':'Gewählte Gemeinde','Whole province · Limburg':'Ganze Provinz · Limburg','Marked area on map':'Markierter Kartenbereich',
     'Screening leads from sampled points. TOP10NL and ProRail distances are approximate; quietness and a building right are not verified.':'Prüfhinweise aus Stichproben. TOP10NL- und ProRail-Abstände sind Näherungen; Ruhe und Baurecht sind nicht bestätigt.'
   });
+  Object.assign(translations.nl,{
+    'DSO current plan areas':'Actuele DSO-plangebieden','LOCAL DATA CONNECTIONS':'LOKALE DATABRONNEN',
+    'PlanView settings':'PlanView-instellingen','DSO production key':'DSO-productiesleutel',
+    'Ruimtelijke plannen V4 key':'Sleutel Ruimtelijke plannen V4',
+    'Not configured':'Niet ingesteld','Save locally':'Lokaal opslaan',
+    'Remove DSO key':'DSO-sleutel verwijderen','Remove RP key':'RP-sleutel verwijderen',
+    'PDOK stays available without a key. Add your production keys here to show DSO documents and current-location geometries alongside the PDOK plankaart.':'PDOK blijft zonder sleutel beschikbaar. Voeg hier je productiesleutels toe om DSO-documenten en geometrieën op de gekozen plek naast de PDOK-plankaart te tonen.',
+    'Omgevingsdocumenten Presenteren v8 · current Omgevingswet sources':'Omgevingsdocumenten Presenteren v8 · actuele Omgevingswet-bronnen',
+    'Legacy IMRO plan metadata · PDOK stays the visible plankaart':'IMRO-plangegevens · PDOK blijft de zichtbare plankaart',
+    'Stored only by your localhost server in your macOS user folder. Keys are never placed in the map page or GitHub Pages build. Leave a field blank to keep its current key; use Remove to delete it.':'Alleen opgeslagen door de localhost-server in je macOS-gebruikersmap. Sleutels komen niet op de kaartpagina of GitHub Pages. Een leeg veld behoudt de sleutel; Verwijderen wist hem.'
+  });
+  Object.assign(translations.de,{
+    'DSO current plan areas':'Aktuelle DSO-Plangebiete','LOCAL DATA CONNECTIONS':'LOKALE DATENQUELLEN',
+    'PlanView settings':'PlanView-Einstellungen','DSO production key':'DSO-Produktionsschlüssel',
+    'Ruimtelijke plannen V4 key':'Schlüssel Ruimtelijke plannen V4',
+    'Not configured':'Nicht hinterlegt','Save locally':'Lokal speichern',
+    'Remove DSO key':'DSO-Schlüssel entfernen','Remove RP key':'RP-Schlüssel entfernen',
+    'PDOK stays available without a key. Add your production keys here to show DSO documents and current-location geometries alongside the PDOK plankaart.':'PDOK bleibt ohne Schlüssel verfügbar. Hier die Produktionsschlüssel eintragen, um DSO-Dokumente und Geometrien am gewählten Ort zusätzlich zur PDOK-Plankarte anzuzeigen.',
+    'Omgevingsdocumenten Presenteren v8 · current Omgevingswet sources':'Omgevingsdocumenten Presenteren v8 · aktuelle Omgevingswet-Quellen',
+    'Legacy IMRO plan metadata · PDOK stays the visible plankaart':'IMRO-Plandaten · PDOK bleibt die sichtbare Plankarte',
+    'Stored only by your localhost server in your macOS user folder. Keys are never placed in the map page or GitHub Pages build. Leave a field blank to keep its current key; use Remove to delete it.':'Nur vom lokalen Server im macOS-Benutzerordner gespeichert. Schlüssel stehen weder im Kartencode noch auf GitHub Pages. Leere Felder behalten den bisherigen Schlüssel; Entfernen löscht ihn.'
+  });
+  Object.assign(translations.nl,{'Camping within (km)':'Camping binnen (km)','Residential buildings nearby · BAG':'Woongebouwen in de buurt · BAG','BAG radius (m)':'BAG-straal (m)','Map matches':'Kaartcriteria voldaan'});
+  Object.assign(translations.de,{'Camping within (km)':'Camping im Umkreis (km)','Residential buildings nearby · BAG':'Wohngebäude in der Nähe · BAG','BAG radius (m)':'BAG-Umkreis (m)','Map matches':'Kartenkriterien erfüllt'});
+  Object.assign(translations.nl,{'Current search':'Huidige zoekopdracht','Search history':'Zoekgeschiedenis','Search results':'Zoekresultaten','Results':'Resultaten','History':'Geschiedenis','Recent searches':'Recente zoekopdrachten','Clear history':'Geschiedenis wissen','Clear search':'Zoekopdracht wissen','Search':'Zoeken','Your searches will appear here after you run one.':'Je zoekopdrachten verschijnen hier nadat je er een hebt uitgevoerd.','Load previous search':'Vorige zoekopdracht laden','Map screening in progress…':'Kaartcontrole loopt…','Official building envelope':'Officieel bouwvlak','Previous search restored. Review it and run again to refresh current map data.':'Vorige zoekopdracht hersteld. Start opnieuw om de kaartgegevens te vernieuwen.'});
+  Object.assign(translations.de,{'Current search':'Aktuelle Suche','Search history':'Suchverlauf','Search results':'Suchergebnisse','Results':'Treffer','History':'Verlauf','Recent searches':'Letzte Suchen','Clear history':'Verlauf löschen','Clear search':'Suche löschen','Search':'Suche','Your searches will appear here after you run one.':'Deine Suchanfragen erscheinen hier, sobald du eine Suche ausgeführt hast.','Load previous search':'Vorherige Suche laden','Map screening in progress…':'Kartenprüfung läuft…','Official building envelope':'Amtliches Baufenster','Previous search restored. Review it and run again to refresh current map data.':'Vorherige Suche geladen. Starte sie erneut, um aktuelle Kartendaten zu prüfen.'});
   const originals=new WeakMap();
-  let language='en',observer;
-  function translate(){
+  let language='en',observer,translationFrame=0;
+  const pendingRoots=new Set();
+  const excluded='[data-pv-managed],#map,#perspective-map,#pv-aerial,.detail-title-row h2,.detail-location,.source-card h4,.source-sub,.source-facts dd,.official-feature-row,.secondary-item strong,.secondary-item span,.provenance-row span,.area-result strong,.area-result small,#coordinates,.search-results';
+  function ignored(node){return (node.nodeType===Node.ELEMENT_NODE?node:node.parentElement)?.closest(excluded);}
+  function scheduleTranslation(records){
+    for(const record of records){
+      if(ignored(record.target))continue;
+      if(record.type==='characterData'){originals.delete(record.target);pendingRoots.add(record.target);}
+      else for(const node of record.addedNodes)if(!ignored(node))pendingRoots.add(node);
+    }
+    if(!pendingRoots.size||translationFrame)return;
+    translationFrame=requestAnimationFrame(()=>{
+      translationFrame=0;const roots=[...pendingRoots];pendingRoots.clear();
+      for(const root of roots)if(root.isConnected&&!roots.some(other=>other!==root&&other.contains(root)))translate(root);
+    });
+  }
+  function translate(root=document.body){
     if(observer)observer.disconnect();
+    if(root===document.body){
     document.documentElement.lang=language;
     document.title=language==='nl'?'PlanView — ruimtelijke plannen Limburg':language==='de'?'PlanView — Raumplanung Limburg':'PlanView — Limburg spatial plans';
     document.getElementById('language')?.setAttribute('aria-label',language==='nl'?'Taal':language==='de'?'Sprache':'Language');
     const advancedQuery=document.getElementById('advanced-query');if(advancedQuery)advancedQuery.placeholder=language==='nl'?'Voorbeeld: onbebouwde woonlocaties met bouwvlak en onherroepelijk plan':language==='de'?'Beispiel: unbebaute Wohnflächen mit Baufenster und rechtskräftigem Plan':'Example: Unbuilt residential land with a building envelope and a final plan';
     const search=document.getElementById('search');if(search){search.placeholder=translations[language]?.['Search address, place or parcel']||'Search address, place or parcel';search.setAttribute('aria-label',search.placeholder);}
-    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
-    while(node=walker.nextNode()){
-      if(node.parentElement?.closest('[data-pv-managed],#map,#perspective-map,.detail-title-row h2,.detail-location,.source-card h4,.source-sub,.source-facts dd,.official-feature-row,.secondary-item strong,.secondary-item span,.provenance-row span,.area-result strong,.area-result small,#coordinates,.search-results'))continue;
+    }
+    // Reject map subtrees before walking: tile/coordinate changes need no translation.
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode(node){return node.nodeType===Node.ELEMENT_NODE?(node.matches(excluded)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP):NodeFilter.FILTER_ACCEPT;}});let node=root.nodeType===Node.TEXT_NODE?root:walker.nextNode();
+    for(;node;node=walker.nextNode()){
       const original=originals.get(node)??node.textContent;originals.set(node,original);
       const trimmed=original.trim();if(!trimmed)continue;
       let translated=translations[language]?.[trimmed];
@@ -102,10 +145,10 @@
       if(!translated){const smart=/^(\d+) matching plan areas? from (\d+) sampled points\.(?: (\d+) data checks failed\.)? Zoom in or mark a smaller area for more detail\.$/.exec(trimmed);if(smart)translated=language==='nl'?`${smart[1]} passende plangebieden uit ${smart[2]} steekproefpunten. Zoom in of markeer een kleiner gebied voor meer detail.`:language==='de'?`${smart[1]} passende Plangebiete aus ${smart[2]} Stichprobenpunkten. Für mehr Details hineinzoomen oder einen kleineren Bereich markieren.`:trimmed;}
       if(!translated){const checking=/^Checking (\d+) points against official plan geometry…$/.exec(trimmed);if(checking)translated=language==='nl'?`${checking[1]} punten met officiële plangeometrie controleren…`:language==='de'?`${checking[1]} Punkte mit offizieller Plangeometrie prüfen…`:trimmed;}
       if(!translated){const checked=/^Checked (\d+) of (\d+) points…$/.exec(trimmed);if(checked)translated=language==='nl'?`${checked[1]} van ${checked[2]} punten gecontroleerd…`:language==='de'?`${checked[1]} von ${checked[2]} Punkten geprüft…`:trimmed;}
-      if(translated)node.textContent=original.replace(trimmed,translated);else if(language==='en')node.textContent=original;
+      const value=translated?original.replace(trimmed,translated):language==='en'?original:node.textContent;if(node.textContent!==value)node.textContent=value;
     }
     observer?.observe(document.body,{childList:true,subtree:true,characterData:true});
   }
   window.planviewSetLanguage=code=>{language=translations[code]?code:'en';try{localStorage.setItem('planview-language',language);}catch{}translate();window.dispatchEvent(new Event('planview-language-change'));};
-  window.addEventListener('load',()=>{try{language=localStorage.getItem('planview-language')||'en';}catch{}const select=document.getElementById('language');select.value=language;select.onchange=()=>window.planviewSetLanguage(select.value);observer=new MutationObserver(()=>translate());translate();});
+  window.addEventListener('load',()=>{try{language=localStorage.getItem('planview-language')||'en';}catch{}const select=document.getElementById('language');select.value=language;select.onchange=()=>window.planviewSetLanguage(select.value);observer=new MutationObserver(scheduleTranslation);translate();});
 })();

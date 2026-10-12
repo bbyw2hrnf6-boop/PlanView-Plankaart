@@ -8,7 +8,8 @@
   ];
   layerDefs.push(...entries);
   const files={provincial:'data/provincial_context.geojson',projects:'data/development_projects.geojson',camping:'data/camping_sites.geojson'};
-  const cache=new Map(),pending=new Map(),leaflet=new Map();
+  const cache=new Map(),pending=new Map(),leaflet=new Map(),drawn=new Map(),perspectiveDrawn=new Map();
+  const sameFeatures=(a,b)=>a?.length===b.length&&b.every((feature,i)=>a[i]===feature);
   const labels={urban_area:'Urban area',nature_network:'Nature network',groundwater_protection:'Groundwater protection',
     'camping, kampeerterrein':'Campsite',caravanpark:'Caravan park',bungalowpark:'Holiday park'};
   const colors={urban_area:'#8766cc',nature_network:'#369769',groundwater_protection:'#48a9d4',
@@ -55,8 +56,9 @@
   }
   function drawLeaflet(id,data){
     let layer=leaflet.get(id);if(!layer){layer=L.layerGroup();leaflet.set(id,layer);}
-    layer.clearLayers();
     const features=visibleFeatures(id,data);
+    if(sameFeatures(drawn.get(id),features)){if(features.length&&!state.map.hasLayer(layer))layer.addTo(state.map);showState(id,features.length?'visible':'empty');return;}
+    drawn.set(id,features);layer.clearLayers();
     if(!features.length){showState(id,'empty');return;}
     for(const feature of features){
       const geo=L.geoJSON(feature,{style,pointToLayer:(_,latlng)=>L.circleMarker(latlng,{radius:8,color:'#fff',weight:2,fillColor:'#d48157',fillOpacity:.95})});
@@ -73,7 +75,7 @@
     const lang=document.documentElement.lang;
     const localized={empty:['No verified data in view','Geen geverifieerde data in beeld','Keine geprüften Daten im Ausschnitt'],loading:['Loading…','Laden…','Lädt…'],error:['Source unavailable','Bron niet beschikbaar','Quelle nicht verfügbar'],visible:['Visible','Zichtbaar','Sichtbar'],off:['Off','Uit','Aus']};
     const text=localized[status][lang==='nl'?1:lang==='de'?2:0];
-    label.textContent=text;label.dataset.state=status==='empty'?'zoom':status;
+    if(label.textContent!==text)label.textContent=text;label.dataset.state=status==='empty'?'zoom':status;
   }
   function updateAttribution(id,on){const value=attribution[id];if(!value||!state.map?.attributionControl)return;
     if(on&&!context[`attribution_${id}`]){state.map.attributionControl.addAttribution(value);context[`attribution_${id}`]=true;}
@@ -84,13 +86,13 @@
       const layer=leaflet.get(entry.id);
       if(!entry.on){if(layer&&state.map.hasLayer(layer))state.map.removeLayer(layer);updateAttribution(entry.id,false);showState(entry.id,'off');continue;}
       updateAttribution(entry.id,true);
-      if(cache.has(entry.id))drawLeaflet(entry.id,cache.get(entry.id));
-      else{showState(entry.id,'loading');load(entry.id).then(()=>refresh()).catch(()=>showState(entry.id,'error'));}
+      if(!state.perspective&&cache.has(entry.id))drawLeaflet(entry.id,cache.get(entry.id));
+      else if(!cache.has(entry.id)){showState(entry.id,'loading');load(entry.id).then(()=>refresh()).catch(()=>showState(entry.id,'error'));}
     }
     updatePerspective();
   }
   function updatePerspective(){
-    if(!state.perspectiveReady)return;
+    if(!state.perspectiveReady||!state.perspective)return;
     const map=state.perspectiveMap;
     for(const entry of entries){
       const sourceId=`context-${entry.id}`;
@@ -106,13 +108,17 @@
         }
       }
       const data=entry.on&&cache.get(entry.id);
-      map.getSource(sourceId).setData(data?{type:'FeatureCollection',features:visibleFeatures(entry.id,data)}:empty);
+      const features=data?visibleFeatures(entry.id,data):[];
+      if(!sameFeatures(perspectiveDrawn.get(entry.id),features)){perspectiveDrawn.set(entry.id,features);map.getSource(sourceId).setData({type:'FeatureCollection',features});}
     }
   }
   const previousUpdate=updateLayers;updateLayers=function(){previousUpdate();refresh();};
-  const previousPerspective=initPerspective;initPerspective=async function(){await previousPerspective();updatePerspective();};
+  const previousPerspective=initPerspective;initPerspective=async function(){await previousPerspective();state.perspectiveMap.on('movestart',()=>clearTimeout(context.refreshTimer));state.perspectiveMap.on('moveend',scheduleRefresh);};
+  const previousToggle=togglePerspective;togglePerspective=async function(){await previousToggle();refresh();};
+  function scheduleRefresh(){clearTimeout(context.refreshTimer);context.refreshTimer=setTimeout(refresh,250);}
   window.addEventListener('load',()=>{
-    state.map.on('moveend',()=>{clearTimeout(context.refreshTimer);context.refreshTimer=setTimeout(refresh,120);});
+    state.map.on('movestart',()=>clearTimeout(context.refreshTimer));
+    state.map.on('moveend',()=>{if(!state.perspective)scheduleRefresh();});
     document.getElementById('municipality').addEventListener('change',()=>setTimeout(refresh,150));
     refresh();
   });

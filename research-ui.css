@@ -1,0 +1,32 @@
+/* Internal presentation of the canonical research workspace.
+   Outer panel placement and responsive widths belong to workspace-ui.css. */
+.pv-research-panel [role="tabpanel"][hidden],
+.pv-research-panel [hidden] { display:none !important; }
+.pv-research-panel .pv-search-tabs { margin:16px 0 12px; }
+.pv-research-panel .pv-search-tabs button { display:flex; align-items:center; justify-content:center; gap:5px; min-height:42px; }
+.pv-research-panel .pv-search-tabs .pv-research-tab-label { display:inline; background:none; margin:0; padding:0; width:auto; height:auto; font-size:12px; }
+.pv-research-panel .pv-search-tabs button:focus-visible,
+.pv-research-panel button:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+.pv-research-panel .pv-research-status:empty { display:none; }
+.pv-research-panel .pv-research-status { padding:10px 12px; margin:0 0 14px; border:1px solid var(--line); border-radius:9px; background:var(--surface2); overflow-wrap:anywhere; }
+.pv-research-panel .advanced-results-view { min-height:160px; }
+.pv-research-panel .pv-research-empty { padding:24px 16px; margin:12px 0; border:1px dashed var(--line2); border-radius:12px; background:var(--surface2); }
+.pv-research-panel .pv-research-empty strong { display:block; color:var(--text); font-size:15px; line-height:1.4; }
+.pv-research-panel .pv-research-empty p,
+.pv-research-panel .pv-research-note { font-size:11px; line-height:1.65; color:var(--muted); margin:8px 0 0; }
+.pv-research-panel .pv-research-footer { margin-top:20px; padding-top:14px; border-top:1px solid var(--line); }
+.pv-research-panel .pv-research-footer-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.pv-research-panel .pv-research-footer-actions button { flex:1 1 auto; min-height:40px; margin:0; white-space:normal; }
+.pv-research-panel .pv-research-footer-actions #pv-cancel-search { color:var(--text); border-color:var(--line2); }
+.pv-research-panel .pv-research-footer-actions #pv-clear-search { font-size:11px; }
+.pv-research-panel .pv-result-tabs { display:flex; flex-wrap:wrap; gap:5px; }
+.pv-research-panel .pv-result-tabs button { flex:1 1 30%; line-height:1.45; }
+.pv-research-panel .advanced-result { text-align:left; }
+.pv-research-panel .advanced-result > span:last-child { min-width:0; overflow-wrap:anywhere; }
+.pv-research-panel .pv-history-item { margin-top:10px; }
+.pv-research-panel .pv-history-toolbar { align-items:center; flex-wrap:wrap; gap:8px; }
+.pv-research-panel .pv-history-query { width:100%; }
+.pv-research-panel .advanced-scope select { width:100%; max-width:100%; }
+.pv-research-panel .advanced-scope { align-items:stretch; }
+.pv-research-panel .advanced-examples button { white-space:normal; text-align:left; line-height:1.4; }
+@media(prefers-reduced-motion:reduce) { .pv-research-panel { scroll-behavior:auto; } }
