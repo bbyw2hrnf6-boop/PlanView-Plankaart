@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 INSTANCE_ID = hashlib.sha256(str(ROOT).encode()).hexdigest()[:12]
 PORTS = range(4174, 4185)
-INTERPRETER_VERSION = 2
+INTERPRETER_VERSION = 3
 
 
 def status(port):
@@ -34,7 +34,7 @@ def available(port):
 
 
 def current_server(info):
-    return (info.get('instance') == INSTANCE_ID and info.get('settingsVersion') == 1
+    return (info.get('instance') == INSTANCE_ID and info.get('settingsVersion') == 2
             and info.get('interpreterVersion') == INTERPRETER_VERSION
             and info.get('model') == 'gpt-6-luna' and info.get('reasoning') == 'high')
 

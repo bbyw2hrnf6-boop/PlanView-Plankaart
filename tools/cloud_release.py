@@ -11,11 +11,12 @@ def write_json(path,value):
     temp=path.with_suffix(path.suffix+'.tmp');temp.write_text(json.dumps(value,indent=2)+'\n');temp.replace(path)
 
 def assets():
-    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'limburg.json','search_filters.schema.json','.nojekyll'}]
+    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'limburg.json','search_filters.schema.json','search_config.json','.nojekyll'}]
     files=root_files+[p for folder in ['data','legend','vendor'] for p in (ROOT/folder).rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT).parts)]
+    files += [p for p in (ROOT/'cloud').rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT/'cloud').parts)]
     for p in files:
         if p.is_symlink():raise ValueError('Refusing symlink: '+str(p))
-        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
+        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt','.ts','.tsx','.sql'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
     return sorted(files,key=lambda p:p.relative_to(ROOT).as_posix())
 
 def fingerprint(files):
@@ -49,7 +50,7 @@ def main():
     checkout=args.checkout.resolve() if args.checkout else None
     if not checkout or checkout==ROOT or ROOT in checkout.parents:raise ValueError('Use a separate Site checkout outside the app folder')
     manifest=json.loads((checkout/'.openai/hosting.json').read_text())
-    if manifest.get('project_id')!=PROJECT or manifest.get('static',{}).get('directory')!='dist':raise ValueError('Wrong Site or unsupported build configuration')
+    if manifest.get('project_id')!=PROJECT or manifest.get('d1')!='DB' or 'static' in manifest:raise ValueError('Wrong Site or unsupported build configuration')
     head=subprocess.check_output(['git','-C',str(checkout),'rev-parse','HEAD'],text=True).strip()
     old=current['published']
     if old.get('site_commit') and head!=old['site_commit']:raise ValueError('Cloud source advanced independently. Reconcile changes before mirroring.')
@@ -60,15 +61,18 @@ def main():
     stage.mkdir()
     try:
         for p in files:
-            target=stage/p.relative_to(ROOT);target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
+            relative=p.relative_to(ROOT)
+            target=(checkout/Path(*relative.parts[1:])) if relative.parts[0]=='cloud' else (stage/relative)
+            target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
         if fingerprint(assets())!=current['fingerprint']:raise ValueError('Source changed during staging; retry once it is stable')
-        release={k:current[k] for k in ['version','fingerprint','file_count']};release.update({'cloud_url':URL,'cloud_ai':False,'cloud_dso':False})
+        release={k:current[k] for k in ['version','fingerprint','file_count']};release.update({'cloud_url':URL,'cloud_ai':True,'cloud_ai_requires_key':True,'cloud_dso':False})
         write_json(stage/'release.json',release)
-        dist=checkout/'dist'
+        (checkout/'planview.html').write_text((ROOT/'index.html').read_text())
+        dist=checkout/'public'
         if dist.exists():shutil.rmtree(dist)
         stage.replace(dist)
         write_json(ROOT/'release.json',release)
-        (checkout/'README.md').write_text('# PlanView web publication\n\nGenerated from the canonical PlanView application folder. Browser assets are in dist/.\n\n'+(ROOT/'CLOUD_SYNC.md').read_text())
+        (checkout/'README.md').write_text('# PlanView web publication\n\nGenerated from the canonical PlanView application folder. Browser assets are in public/. The authenticated AI server is maintained in the canonical cloud/ folder.\n\n'+(ROOT/'CLOUD_SYNC.md').read_text())
         print(json.dumps({**current,'checkout':str(checkout),'validated':True,'staged':True}))
     finally:
         if stage.exists():shutil.rmtree(stage)

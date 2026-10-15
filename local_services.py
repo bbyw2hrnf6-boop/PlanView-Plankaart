@@ -18,7 +18,7 @@ DSO_BASE = 'https://service.omgevingswet.overheid.nl/publiek/omgevingsdocumenten
 GEOMETRY_BASE = 'https://service.omgevingswet.overheid.nl/publiek/omgevingsdocumenten/api/geometrieopvragen/v1'
 RP_BASE = 'https://ruimte.omgevingswet.overheid.nl/ruimtelijke-plannen/api/opvragen/v4'
 RD_CRS = 'http://www.opengis.net/def/crs/EPSG/0/28992'
-KEY_NAMES = ('dso', 'rp')
+KEY_NAMES = ('dso', 'rp', 'openai')
 
 
 def credentials():
@@ -44,7 +44,7 @@ def save_credentials(updates):
         if not isinstance(value, str):
             raise ValueError('Invalid credential value')
         value = value.strip()
-        if value and (len(value) < 8 or len(value) > 256 or not re.fullmatch(r'[A-Za-z0-9_.~+/-]+', value)):
+        if value and (len(value) < 8 or len(value) > (512 if name == 'openai' else 256) or not re.fullmatch(r'[A-Za-z0-9_.~+/-]+', value)):
             raise ValueError('Invalid credential format')
         if value:
             current[name] = value

@@ -99,18 +99,17 @@
   function renderBackendStatus(){
     const label=$('advanced-backend');if(!label)return;label.dataset.pvManaged='';
     const info=advanced.backendStatus;
-    if(window.planviewRuntime?.isLocal===false)label.textContent=tr('Browser interpretation · no cloud AI connected','Browserinterpretatie · geen cloud-AI gekoppeld','Browser-Auswertung · keine Cloud-KI verbunden');
-    else if(!info)label.textContent=tr('Checking AI connection…','AI-verbinding controleren…','KI-Verbindung wird geprüft…');
+    if(!info)label.textContent=tr('Checking AI connection…','AI-verbinding controleren…','KI-Verbindung wird geprüft…');
     else if(info.state==='ready')label.textContent=`${modelLabel(info)} · ${tr('ready','gereed','bereit')}`;
     else if(info.reason==='interpretation-unavailable')label.textContent=tr('AI temporarily unavailable · local parser available','AI tijdelijk niet beschikbaar · lokale parser beschikbaar','KI vorübergehend nicht verfügbar · lokaler Parser verfügbar');
     else if(info.state==='error')label.textContent=tr('AI connection could not be checked · local parser available','AI-verbinding kon niet worden gecontroleerd · lokale parser beschikbaar','KI-Verbindung nicht prüfbar · lokaler Parser verfügbar');
+    else if(window.planviewRuntime?.isLocal===false)label.textContent=tr('AI search · add your API key in settings','AI-zoeken · voeg je API-sleutel toe in instellingen','KI-Suche · API-Key in Einstellungen hinterlegen');
     else label.textContent=tr('AI unavailable · local parser available','AI niet beschikbaar · lokale parser beschikbaar','KI nicht verfügbar · lokaler Parser verfügbar');
     label.dataset.state=info?.state||'checking';
     const resultLabel=$('advanced-parsed')?.querySelector('.advanced-engine');
     if(resultLabel&&advanced.interpretation)resultLabel.textContent=interpretationLabel(advanced.interpretation);
   }
   async function refreshBackendStatus({force=false}={}){
-    if(window.planviewRuntime?.isLocal===false){advanced.ai=false;advanced.backendStatus={available:false,state:'unavailable',reason:'backend-unavailable'};advanced.statusCheckedAt=Date.now();renderBackendStatus();return advanced.backendStatus;}
     if(advanced.statusRequest)return advanced.statusRequest;
     if(!force&&advanced.backendStatus&&Date.now()-advanced.statusCheckedAt<3000)return advanced.backendStatus;
     advanced.statusRequest=(async()=>{
@@ -121,7 +120,7 @@
         if(typeof raw.available!=='boolean')throw new Error('AI status missing availability');
         advanced.ai=raw.available;
         advanced.backendStatus={...backendMetadata(raw),available:advanced.ai,state:advanced.ai?'ready':'unavailable',reason:advanced.ai?'':'backend-unavailable'};
-      }catch{
+      }catch(error){
         advanced.ai=false;
         advanced.backendStatus={...backendMetadata(advanced.backendStatus||{}),available:false,state:'error',reason:'status-unavailable'};
       }
@@ -129,23 +128,27 @@
     })();
     try{return await advanced.statusRequest;}finally{advanced.statusRequest=null;}
   }
+  window.addEventListener('planview-ai-change',()=>refreshBackendStatus({force:true}));
   function normalize(raw){const build=raw.potentialBuildingLand===true;return {groups:[...new Set((Array.isArray(raw.groups)?raw.groups:[]).filter(g=>allowedGroups.has(g)))],statuses:[...new Set((Array.isArray(raw.statuses)?raw.statuses:[]).filter(s=>allStatus.includes(s)))],requireEnvelope:raw.requireEnvelope===true||build,requireUnbuilt:raw.requireUnbuilt===true||build,nearCamping:raw.nearCamping===true&&raw.insideCamping!==true,insideCamping:raw.insideCamping===true,accommodationIntent:raw.accommodationIntent==='accommodation'?'accommodation':'none',nearTown:raw.nearTown===true,nearFeatures:[...new Set((Array.isArray(raw.nearFeatures)?raw.nearFeatures:[]).filter(k=>k in nearbyTypes))],avoidIndustry:raw.avoidIndustry===true,preferQuiet:raw.preferQuiet===true,potentialBuildingLand:build,includeReviewLeads:raw.includeReviewLeads===true,unsupported:Array.isArray(raw.unsupported)?raw.unsupported.slice(0,4).map(String):[],explanation:String(raw.explanation||''),engine:backendMetadata(raw).model||'local',...backendMetadata(raw),fallbackReason:['backend-unavailable','status-unavailable','interpretation-unavailable'].includes(raw.fallbackReason)?raw.fallbackReason:''};}
   async function interpret(query,context){
     // Refresh before each actual interpretation, including after a server restart.
     // Opening the panel shares an in-flight request and uses only a brief status cache.
     const status=await refreshBackendStatus({force:true});
+    if(!advanced.ai&&window.planviewRuntime?.isLocal===false){const error=new Error(status.state==='error'?'service_unavailable':'api_key_missing');error.planviewAI=true;throw error;}
     if(advanced.ai){
       try{
-        const response=await fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,context})});
-        if(!response.ok)throw new Error('AI interpretation unavailable');
-        const spec=normalize(await response.json());
+        const response=await fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,context}),signal:AbortSignal.timeout(125000)});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||'provider_unavailable');
+        const spec=normalize(data);
         if(spec.engine==='local')throw new Error('AI interpretation metadata missing');
         advanced.backendStatus={...backendMetadata(spec),available:true,state:'ready',reason:''};advanced.ai=true;renderBackendStatus();
         return spec;
-      }catch{
+      }catch(error){
         advanced.ai=false;
         advanced.backendStatus={...backendMetadata(status),available:false,state:'error',reason:'interpretation-unavailable'};
         advanced.statusCheckedAt=0;renderBackendStatus();
+        if(window.planviewRuntime?.isLocal===false){error.planviewAI=true;throw error;}
         return normalize({...localInterpret(query),fallbackReason:'interpretation-unavailable'});
       }
     }
@@ -536,7 +539,7 @@
       if(spec.accommodationIntent==='accommodation'){const note=document.createElement('p');note.className='advanced-context-note';note.textContent=tr('A mapped campsite and recreation designation do not prove that tiny houses, new buildings or permanent residence are allowed. Open each linked plan and inspect use, building and accommodation rules. Current Omgevingsplan rules may supersede older Wro plans.','Een ingetekende camping of recreatiebestemming bewijst niet dat tiny houses, nieuwbouw of permanent wonen zijn toegestaan. Controleer per locatie de gekoppelde plan- en omgevingsplanregels.','Ein kartierter Campingplatz oder Erholungsgebiet beweist keine Zulässigkeit von Tiny Houses, Neubau oder Dauerwohnen. Die verlinkten Plan- und Omgevingsplan-Regeln je Ort prüfen.');$('advanced-results').prepend(note);}
       if(contextNeeds(spec)){const note=document.createElement('p');note.className='advanced-context-note';note.textContent=tr('Surroundings: PDOK TOP10NL and ProRail snapshot. Distances to mapped features are approximate. Quietness needs a separate noise check; verify legal rights in Omgevingsloket.','Omgeving: PDOK TOP10NL en ProRail. Afstanden tot kaartobjecten zijn bij benadering. Stilte vraagt een aparte geluidscontrole; controleer rechten in het Omgevingsloket.','Umgebung: PDOK TOP10NL und ProRail. Abstände zu Kartenobjekten sind Näherungen. Ruhe erfordert eine gesonderte Lärmprüfung; Baurecht im Omgevingsloket prüfen.');$('advanced-results').prepend(note);}
       if(advanced.results.length)status.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
-    }catch(error){if(ticket!==advanced.ticket)return;console.warn('Spatial search failed',error);status.textContent=error.message==='Context feature limit reached'?tr('Too many mapped surroundings in this scope. Select one municipality or draw a smaller area.','Te veel kaartobjecten in dit gebied. Kies één gemeente of teken een kleiner gebied.','Zu viele Umgebungsobjekte in diesem Bereich. Eine Gemeinde wählen oder kleineres Gebiet markieren.'):tr('A required map or surroundings service is unavailable. No partial matches were claimed; retry or narrow the area.','Een vereiste kaartdienst is niet beschikbaar. Er worden geen onvolledige treffers geclaimd.','Ein benötigter Karten- oder Umgebungsdienst ist nicht erreichbar. Es werden keine unvollständigen Treffer behauptet.');advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';}
+    }catch(error){if(ticket!==advanced.ticket)return;console.warn('Spatial search failed',error);status.textContent=error.planviewAI?(window.planviewAIMessage?.(error.message)||tr('AI search unavailable. Check your API key in settings.','AI-zoeken niet beschikbaar. Controleer je API-sleutel in instellingen.','KI-Suche nicht verfügbar. Prüfe deinen API-Key in den Einstellungen.')):error.message==='Context feature limit reached'?tr('Too many mapped surroundings in this scope. Select one municipality or draw a smaller area.','Te veel kaartobjecten in dit gebied. Kies één gemeente of teken een kleiner gebied.','Zu viele Umgebungsobjekte in diesem Bereich. Eine Gemeinde wählen oder kleineres Gebiet markieren.'):tr('A required map or surroundings service is unavailable. No partial matches were claimed; retry or narrow the area.','Een vereiste kaartdienst is niet beschikbaar. Er worden geen onvolledige treffers geclaimd.','Ein benötigter Karten- oder Umgebungsdienst ist nicht erreichbar. Es werden keine unvollständigen Treffer behauptet.');advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';}
     finally{if(ticket===advanced.ticket){button.disabled=false;window.dispatchEvent(new CustomEvent('planview-search-busy',{detail:{busy:false}}));}}
   }
   Object.assign(advanced,{
