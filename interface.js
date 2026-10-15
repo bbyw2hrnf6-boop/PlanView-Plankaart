@@ -43,8 +43,11 @@
   function readStorage(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}}
   function writeStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{showToast('Local storage is unavailable. Export your brief to keep it.');return false;}}
   function applyAppearance(choice){ui.appearance=['day','night','sand','system'].includes(choice)?choice:'day';const resolved=ui.appearance==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'night':'day'):ui.appearance;document.body.dataset.appearance=resolved;document.body.classList.toggle('theme-dark',resolved==='night');document.body.classList.toggle('theme-light',resolved!=='night');if($('pv-theme'))$('pv-theme').value=ui.appearance;document.querySelector('meta[name="theme-color"]').content=resolved==='night'?'#0b191c':resolved==='sand'?'#f4efe4':'#f5f4ef';writeStorage('planview-appearance',ui.appearance);}
-  function navMarkup(mobile=false){return [['explore','Map','map'],['compare','Compare','layers2'],['cases','Cases','file']].map(([view,label,ico])=>{const active=view==='explore'?!['compare','cases'].includes(ui.view):view===ui.view;const navLabel=view==='compare'?({de:'Vergleich',nl:'Vergelijking'}[document.documentElement.lang]||'Compare'):t(label);return `<button type="button" data-view="${view}" class="${active?'active':''}" aria-pressed="${active}">${mobile?'':icon(ico)}<span>${esc(navLabel)}</span>${view==='compare'?`<span class="pv-nav-count">${ui.compare.length}</span>`:''}</button>`;}).join('');}
-  function updateNav(){for(const [id,mobile] of [['pv-nav',false],['pv-mobile-nav',true]]){if(!$(id))continue;$(id).innerHTML=navMarkup(mobile);$(id).querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));}}
+  function navMarkup(mobile=false){
+    const items=mobile?[['explore','Map','map'],['search','Search','search'],['layers','Layers','layers2'],['compare','Compare','grid'],['cases','Cases','file']]:[['explore','Map','map'],['compare','Compare','layers2'],['cases','Cases','file']];
+    return items.map(([view,label,ico])=>{const active=view==='explore'?!['compare','cases'].includes(ui.view):view===ui.view;const navLabel=view==='compare'?({de:'Vergleich',nl:'Vergelijking'}[document.documentElement.lang]||'Compare'):view==='search'?({de:'Suchen',nl:'Zoeken'}[document.documentElement.lang]||'Search'):view==='layers'?({de:'Ebenen',nl:'Lagen'}[document.documentElement.lang]||'Layers'):t(label);const tool=['layers','search'].includes(view);return `<button type="button" ${tool?`data-mobile-tool="${view}"`:`data-view="${view}"`} class="${active?'active':''}" aria-pressed="${active}">${icon(ico)}<span>${esc(navLabel)}</span>${view==='compare'?`<span class="pv-nav-count">${ui.compare.length}</span>`:''}</button>`;}).join('');
+  }
+  function updateNav(){for(const [id,mobile] of [['pv-nav',false],['pv-mobile-nav',true]]){if(!$(id))continue;$(id).innerHTML=navMarkup(mobile);$(id).querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{if(mobile&&b.dataset.view==='explore')window.dispatchEvent(new Event('planview-mobile-map'));setView(b.dataset.view);});$(id).querySelectorAll('[data-mobile-tool]').forEach(b=>b.onclick=()=>$(b.dataset.mobileTool==='layers'?'pv-layers':'pv-research')?.click());}}
   function notifyView(){window.dispatchEvent(new CustomEvent('planview-view-change',{detail:{view:ui.view,inspectorOpen:$('detail-panel')?.classList.contains('open')||false,researchOpen:!!window.planviewAdvanced?.open}}));}
   function setView(view){
     if(!['explore','inspect','search','compare','cases'].includes(view))return;
@@ -149,8 +152,8 @@
     content.querySelectorAll('.pv-inspector-tabs [data-tab]').forEach(b=>{b.setAttribute('aria-selected',String(b.dataset.tab===ui.tab));b.setAttribute('aria-controls',ids[b.dataset.tab].join(' '));b.tabIndex=b.dataset.tab===ui.tab?0:-1;});
   }
   function dockStreet(){
-    const street=$('pv-street'),panel=$('detail-panel'),target=innerWidth<=760&&panel.classList.contains('open')?panel:document.querySelector('.map-stage');
-    if(street&&street.parentElement!==target){target===panel?panel.prepend(street):target.append(street);requestAnimationFrame(()=>ui.aerial?.invalidateSize());}
+    const street=$('pv-street'),panel=$('detail-panel'),target=innerWidth<=900&&panel.classList.contains('open')?panel:document.querySelector('.map-stage');
+    if(street&&street.parentElement!==target){target.append(street);requestAnimationFrame(()=>ui.aerial?.invalidateSize());}
   }
   function updateStreet(){
     dockStreet();const p=state.selected?.point;if(!p){$('pv-street').hidden=true;return;}
@@ -163,10 +166,12 @@
     requestAnimationFrame(()=>{ui.aerial.invalidateSize();ui.aerial.setView([lat,lng],17,{animate:false});ui.aerialPin.setLatLng([lat,lng]);});
   }
   function keepMobileSelectionVisible(force=false){
-    if(innerWidth>600||!state.selected?.point)return;
+    if(innerWidth>900||!state.selected?.point)return;
     const p=state.selected.point,key=`${p.lat}:${p.lng}`;if(!force&&ui.mobilePoint===key)return;ui.mobilePoint=key;clearTimeout(ui.mobilePan);
-    ui.mobilePan=setTimeout(()=>{if(innerWidth>600||ui.view!=='inspect'||!state.selected||!samePoint(p,state.selected.point)||$('detail-panel').classList.contains('pv-expanded'))return;
-      state.map.panInside([p.lat,p.lng],{paddingTopLeft:[24,90],paddingBottomRight:[24,$('detail-panel').offsetHeight+92],animate:false});
+    ui.mobilePan=setTimeout(()=>{if(innerWidth>900||ui.view!=='inspect'||!state.selected||!samePoint(p,state.selected.point)||$('detail-panel').classList.contains('pv-expanded'))return;
+      const height=$('detail-panel').offsetHeight;
+      if(state.perspective&&state.perspectiveMap)state.perspectiveMap.easeTo({center:[p.lng,p.lat],offset:[0,-height/2],duration:matchMedia('(prefers-reduced-motion: reduce)').matches?0:200});
+      else state.map.panInside([p.lat,p.lng],{paddingTopLeft:[24,24],paddingBottomRight:[24,height+24],animate:false});
     },750);
   }
   const compareContext=()=>ui.compareContextPromise??=fetch('data/limburg_context.json').then(r=>{if(!r.ok)throw new Error(`Context ${r.status}`);return r.json();}).catch(error=>{ui.compareContextPromise=null;throw error;});

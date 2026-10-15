@@ -2,7 +2,8 @@
 (() => {
   const $ = id => document.getElementById(id);
   const tr = (en, nl, de) => ({nl, de}[document.documentElement.lang] || en);
-  let layersOpen = true;
+  const mobileMode=matchMedia('(max-width:900px)');
+  let layersOpen = !mobileMode.matches;
   let settingsTab = 'connections';
   let lastFocus = null;
 
@@ -20,7 +21,13 @@
     $('pv-layers').setAttribute('aria-pressed', String(document.body.dataset.left === 'layers'));
     $('pv-research').setAttribute('aria-pressed', String(research && !workbench));
     $('pv-research').setAttribute('aria-expanded', String(research && !workbench));
-    syncMapChoices();
+    syncMobileNav();syncMapChoices();
+    if(research||inspector||workbench){if($('mobile-map-options'))$('mobile-map-options').open=false;}
+  }
+
+  function syncMobileNav(){
+    const view=window.planviewUI?.view,tool=document.body.dataset.left;
+    $('pv-mobile-nav')?.querySelectorAll('button').forEach(button=>{const target=button.dataset.mobileTool||button.dataset.view;const active=target==='layers'?tool==='layers':target==='search'?!$('advanced-panel').hidden:target==='explore'?!['cases','compare'].includes(view)&&tool==='none':view===target;button.setAttribute('aria-pressed',String(active));button.classList.toggle('active',active);if(button.dataset.mobileTool)button.setAttribute('aria-expanded',String(active));});
   }
 
   function syncMapChoices() {
@@ -29,6 +36,7 @@
     $('pv-map-ink').value = state.mapStyle;
     $('pv-perspective').value = state.perspective ? 'perspective' : '2d';
     $('pv-perspective').disabled = $('perspective-toggle').disabled;
+    const quick=$('mobile-perspective');if(quick){quick.disabled=$('pv-perspective').disabled;quick.setAttribute('aria-pressed',String(state.perspective));quick.querySelector('span').textContent=state.perspective?tr('2D map','2D-kaart','2D-Karte'):tr('3D buildings','3D-gebouwen','3D-Gebäude');}
     const map = state.perspective && state.perspectiveReady ? state.perspectiveMap : state.map;
     $('pv-basemap').title = state.baseMode === 'bgt' && map?.getZoom() < 15
       ? tr('BGT appears from zoom 15; street map is shown now.', 'BGT verschijnt vanaf zoom 15; nu zie je de stratenkaart.', 'BGT ab Zoom 15; aktuell wird die Straßenkarte angezeigt.') : '';
@@ -74,6 +82,30 @@
     state.map.on('zoomend', syncMapChoices);
     document.querySelector('.workspace').append($('advanced-panel'));
     $('advanced-toggle').hidden = true;
+  }
+
+  function makeMobileTools(){
+    const toolbar=$('pv-toolbar'),choices=toolbar.querySelector('.workspace-map-choices');
+    const quick=document.createElement('button');quick.id='mobile-perspective';quick.type='button';quick.className='mobile-only-tool';quick.dataset.pvManaged='';quick.innerHTML=`${icon('building')}<span></span>`;
+    quick.onclick=()=>{$('pv-perspective').value=state.perspective?'2d':'perspective';$('pv-perspective').dispatchEvent(new Event('change'));};
+    const options=document.createElement('details');options.id='mobile-map-options';options.className='mobile-only-tool';options.dataset.pvManaged='';options.innerHTML=`<summary>${icon('settings')}<span></span></summary><div class="mobile-map-menu"><div class="mobile-draw-tools"></div></div>`;
+    toolbar.append(quick,options);
+    for(const id of ['pv-draw','pv-measure'])$(id).addEventListener('click',()=>options.open=false);
+    function place(){
+      if(mobileMode.matches){options.querySelector('.mobile-map-menu').prepend(choices);options.querySelector('.mobile-draw-tools').append($('pv-draw'),$('pv-measure'));}
+      else{options.open=false;toolbar.insertBefore($('pv-draw'),quick);toolbar.insertBefore($('pv-measure'),quick);toolbar.insertBefore(choices,quick);}
+      syncMapChoices();syncLayout();
+    }
+    options.addEventListener('toggle',()=>options.querySelector('summary').setAttribute('aria-expanded',String(options.open)));
+    document.addEventListener('pointerdown',event=>{if(options.open&&!options.contains(event.target))options.open=false;});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&options.open){event.preventDefault();event.stopImmediatePropagation();options.open=false;options.querySelector('summary').focus();}},true);
+    window.addEventListener('planview-mobile-map',()=>{layersOpen=false;options.open=false;});
+    mobileMode.addEventListener('change',()=>{if(mobileMode.matches)layersOpen=false;place();});
+    place();
+    let frame=0;
+    const viewport=window.visualViewport;
+    function size(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(viewport?.scale&&viewport.scale!==1)return;const height=Math.round(viewport?.height||innerHeight);const value=height+'px';if(document.documentElement.style.getPropertyValue('--app-height')!==value)document.documentElement.style.setProperty('--app-height',value);const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');document.body.dataset.keyboard=mobileMode.matches&&typing&&innerHeight-height>140?'open':'closed';$('pv-mobile-nav').inert=document.body.dataset.keyboard==='open';});}
+    viewport?.addEventListener('resize',size);window.addEventListener('resize',size);document.addEventListener('focusin',size);document.addEventListener('focusout',size);size();
   }
 
   function simplifyLayers() {
@@ -190,7 +222,8 @@
     $('services-settings').setAttribute('aria-label',tr('Settings','Instellingen','Einstellungen'));
     $('services-settings').title = tr('Settings','Instellingen','Einstellungen');
     document.querySelectorAll('#language option').forEach(option => { option.textContent = option.value.toUpperCase(); });
-    syncMapChoices(); updateThemeSelection();
+    if($('mobile-map-options'))$('mobile-map-options').querySelector('summary span').textContent=tr('Map options','Kaartopties','Kartenoptionen');
+    syncMobileNav();syncMapChoices(); updateThemeSelection();
   }
 
   function improveDirectSearch() {
@@ -214,7 +247,7 @@
   }
 
   window.addEventListener('load', () => {
-    makeMapTools(); simplifyLayers(); makeSettings(); improveDirectSearch(); translateWorkspace();
+    makeMapTools(); simplifyLayers(); makeSettings(); improveDirectSearch(); makeMobileTools(); translateWorkspace();
     const observer = new MutationObserver(syncLayout);
     observer.observe($('detail-panel'), {attributes:true, attributeFilter:['class']});
     observer.observe($('advanced-panel'), {attributes:true, attributeFilter:['hidden']});
