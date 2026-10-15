@@ -4,3 +4,7 @@
 .env.*
 __pycache__/
 *.pyc
+
+# Local cloud deployment receipts and generated version
+.planview-cloud/
+release.json

@@ -33,6 +33,12 @@
     label.dataset.state=service.error?'error':service.loading?'loading':'visible';
   }
   async function loadSettings(){
+    if(window.planviewRuntime?.isLocal===false){
+      const text=tr('DSO and RP connections currently require the local Mac server. Public PDOK maps and 3D buildings work here.','DSO en RP vereisen momenteel de lokale Mac-server. Openbare PDOK-kaarten en 3D-gebouwen werken hier.','DSO- und RP-Verbindungen benötigen derzeit den lokalen Mac-Server. Öffentliche PDOK-Karten und 3D-Gebäude funktionieren hier.');
+      message(text);for(const id of ['dso-status','rp-status'])$(id).textContent=tr('Local server only','Alleen lokale server','Nur auf lokalem Server');
+      document.querySelectorAll('#dso-key,#rp-key,#remove-dso,#remove-rp,#services-form button[type="submit"]').forEach(node=>node.disabled=true);
+      const input=document.querySelector('[data-layer="dso"]');if(input){input.disabled=true;input.closest('.layer-row').title=text;const label=input.closest('.layer-row').querySelector('.pv-layer-state');if(label)label.textContent=tr('Local server only','Alleen lokale server','Nur auf lokalem Server');}return;
+    }
     try{const data=await getJSON('/api/settings');service.configured=data.configured||service.configured;
       updateStatus();
     }catch{message(tr('Start PlanView with the Desktop launcher to manage local keys.','Start PlanView via de Desktop-starter om sleutels lokaal te beheren.','PlanView mit dem Desktop-Starter öffnen, um Schlüssel lokal zu verwalten.'));}

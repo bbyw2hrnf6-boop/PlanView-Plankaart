@@ -87,6 +87,7 @@
     return `${model} · ${effort} · ${backend}`;
   }
   function localInterpretationLabel(reason){
+    if(window.planviewRuntime?.isLocal===false)return tr('Browser interpretation · no cloud AI connected','Browserinterpretatie · geen cloud-AI gekoppeld','Browser-Auswertung · keine Cloud-KI verbunden');
     if(reason==='interpretation-unavailable')return tr('AI temporarily unavailable · local interpretation used','AI tijdelijk niet beschikbaar · lokaal geïnterpreteerd','KI vorübergehend nicht verfügbar · lokal ausgewertet');
     if(reason==='status-unavailable')return tr('AI connection could not be checked · local interpretation used','AI-verbinding kon niet worden gecontroleerd · lokaal geïnterpreteerd','KI-Verbindung nicht prüfbar · lokal ausgewertet');
     return tr('AI unavailable · local interpretation used','AI niet beschikbaar · lokaal geïnterpreteerd','KI nicht verfügbar · lokal ausgewertet');
@@ -98,7 +99,8 @@
   function renderBackendStatus(){
     const label=$('advanced-backend');if(!label)return;label.dataset.pvManaged='';
     const info=advanced.backendStatus;
-    if(!info)label.textContent=tr('Checking AI connection…','AI-verbinding controleren…','KI-Verbindung wird geprüft…');
+    if(window.planviewRuntime?.isLocal===false)label.textContent=tr('Browser interpretation · no cloud AI connected','Browserinterpretatie · geen cloud-AI gekoppeld','Browser-Auswertung · keine Cloud-KI verbunden');
+    else if(!info)label.textContent=tr('Checking AI connection…','AI-verbinding controleren…','KI-Verbindung wird geprüft…');
     else if(info.state==='ready')label.textContent=`${modelLabel(info)} · ${tr('ready','gereed','bereit')}`;
     else if(info.reason==='interpretation-unavailable')label.textContent=tr('AI temporarily unavailable · local parser available','AI tijdelijk niet beschikbaar · lokale parser beschikbaar','KI vorübergehend nicht verfügbar · lokaler Parser verfügbar');
     else if(info.state==='error')label.textContent=tr('AI connection could not be checked · local parser available','AI-verbinding kon niet worden gecontroleerd · lokale parser beschikbaar','KI-Verbindung nicht prüfbar · lokaler Parser verfügbar');
@@ -108,6 +110,7 @@
     if(resultLabel&&advanced.interpretation)resultLabel.textContent=interpretationLabel(advanced.interpretation);
   }
   async function refreshBackendStatus({force=false}={}){
+    if(window.planviewRuntime?.isLocal===false){advanced.ai=false;advanced.backendStatus={available:false,state:'unavailable',reason:'backend-unavailable'};advanced.statusCheckedAt=Date.now();renderBackendStatus();return advanced.backendStatus;}
     if(advanced.statusRequest)return advanced.statusRequest;
     if(!force&&advanced.backendStatus&&Date.now()-advanced.statusCheckedAt<3000)return advanced.backendStatus;
     advanced.statusRequest=(async()=>{

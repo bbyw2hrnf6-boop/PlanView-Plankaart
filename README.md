@@ -81,3 +81,12 @@ Advanced Search first screens PDOK zoning, indexed bouwvlakken and nearby public
 ### AI connection update · 2026-10-02
 
 Search uses `gpt-6-luna` with `high` reasoning through the existing signed-in Codex CLI (or configured API fallback). Desktop launches resolve the current bundled Codex CLI even without a shell PATH. The status endpoint reports the actual interpreter configuration; the launcher only reuses a matching server. Reopen the research panel to recheck a recovered connection. Temporary request failures are shown as local fallback rather than as a lost sign-in.
+
+
+## Local and hosted release (2026-10-15)
+
+The canonical source is this PlanView folder. The private web mirror is https://planview-maastricht-spatial.dannhir.chatgpt.site and uses the existing owner-only ChatGPT sign-in. The Sites checkout is a generated publication mirror, not a second independently edited app. `tools/cloud_release.py` fingerprints and validates browser assets, stages them into that checkout, and writes the same `release.json` to localhost and the web artifact. It excludes Python source, Git metadata, logs, credentials, and browser case data.
+
+The published browser app stays available when the Mac sleeps. Public maps, 3DBAG, PDOK point inspection, address search, browser filter interpretation, and map screening work without a Mac connection. Codex CLI interpretation and configured DSO/RP proxies remain local until an authenticated cloud API is provisioned; the web UI states this and disables local-key forms. Cases, history, comparisons, and appearance are stored per browser; hosting does not synchronize those personal records.
+
+A Codex heartbeat checks the canonical source every ten minutes while the desktop executor is available and publishes changed, validated browser assets through the Sites native workflow. Unchanged runs do not deploy. Edits from another cloud-source session are treated as a conflict, never silently overwritten. For immediate publication, run the same procedure described in `CLOUD_SYNC.md`. Existing open pages need a reload to use a new release. No secret token is retained by the release script.
