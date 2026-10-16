@@ -89,7 +89,7 @@ The canonical source is this PlanView folder. The private web mirror is https://
 
 The published browser app stays available when the Mac sleeps. Public maps, 3DBAG, PDOK point inspection, address search, browser filter interpretation, and map screening work without a Mac connection. The private Site now supports full GPT-6 Luna High interpretation after an API key is saved in its web settings. Codex CLI sessions and configured DSO/RP proxies remain local; the web UI keeps those local-key forms disabled. Cases, history, comparisons, and appearance are stored per browser; hosting does not synchronize those personal records.
 
-A Codex heartbeat checks the canonical source every ten minutes while the desktop executor is available and publishes changed, validated browser assets through the Sites native workflow. Unchanged runs do not deploy. Edits from another cloud-source session are treated as a conflict, never silently overwritten. For immediate publication, run the same procedure described in `CLOUD_SYNC.md`. Existing open pages need a reload to use a new release. No secret token is retained by the release script.
+Local/cloud synchronization is part of each authorized PlanView change: validate, push the matching cloud source, deploy to the existing private Site and record success in the same task. There is no recurring scheduled task, periodic check or background watcher. External local edits or arbitrary Git pushes are not automatically detected. Edits from another cloud-source session are treated as a conflict, never silently overwritten. Follow `CLOUD_SYNC.md` for publication. Existing open pages need a reload to use a new release. No secret token is retained by the release script.
 
 
 ## Mobile workspace (2026-10-15)
