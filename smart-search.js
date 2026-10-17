@@ -10,9 +10,9 @@
   const nearbyTypes = {
     station:{km:3,label:['rail station','treinstation','Bahnhof'],pattern:/\b(train stations?|rail(?:way)? stations?|treinstations?|bahnh[oö]fe?|bahnhof)\b/i},
     park:{km:2,label:['park','park','Park'],pattern:/\b(parks?|parken|parks?anlage[n]?)\b/i},
-    sports:{km:2,label:['sports complex','sportterrein','Sportanlage'],pattern:/\b(sports? (?:fields?|complex|grounds?)|sportterreinen?|sportcomplexen?|sportanlagen?|sportpl[aä]tze?)\b/i},
-    cemetery:{km:2,label:['cemetery','begraafplaats','Friedhof'],pattern:/\b(cemeter(?:y|ies)|graveyards?|begraafplaatsen?|friedh[oö]fe?|friedhof)\b/i},
-    swimming_pool:{km:2,label:['swimming pool','zwembad','Schwimmbad'],pattern:/\b(swimming pools?|zwembaden?|schwimmb[aä]der|schwimmbad)\b/i},
+    sports:{km:2,label:['sports complex','sportterrein','Sportanlage'],pattern:/\b(sports? (?:fields?|complex|grounds?)|sportterrein(?:en)?|sportcomplex(?:en)?|sportanlagen?|sportpl[aä]tze?)\b/i},
+    cemetery:{km:2,label:['cemetery','begraafplaats','Friedhof'],pattern:/\b(cemeter(?:y|ies)|graveyards?|begraafplaats(?:en)?|friedh[oö]fe?|friedhof)\b/i},
+    swimming_pool:{km:2,label:['swimming pool','zwembad','Schwimmbad'],pattern:/\b(swimming pools?|zwembad(?:en)?|schwimmb[aä]der|schwimmbad)\b/i},
     marina:{km:3,label:['marina','jachthaven','Yachthafen'],pattern:/\b(marinas?|jachthavens?|yachth[aä]fen|yachthafen)\b/i}
   };
   const advanced = {drawing:false,suppressClick:false,bounds:null,rectangle:null,preview:null,start:null,overlay:null,markers:null,results:[],ticket:0,ai:false,autoRunAfterDraw:false,pending:null,contextCache:new Map(),bagCache:new Map(),envelopeTiles:new Map(),envelopeGeoTiles:new Map(),history:loadSearchHistory(),open:false,activeTab:'request',busy:false,hasSearched:false,backendStatus:null,statusCheckedAt:0,statusRequest:null,interpretation:null};
@@ -45,25 +45,15 @@
     potentialBuildingLand:/\b(build(?:ing|able)?\s*(?:land|ground|site|plot)|bouwgrond|bouwlocatie|baugrund\w*|baufl[aä]che|bebouwbaar|bebaubar)\b/i
   };
   const tr = (en,nl,de) => ({nl,de}[document.documentElement.lang] || en);
-  const distanceDefaults={camping:3,town:6,station:3,park:2,sports:2,cemetery:2,swimming_pool:2,marina:3,industry:1.2};
-  const distanceTerms={camping:/\b(camp(?:ing|site|ground)?s?|holiday\s*parks?|vacation\s*parks?|ferienparks?|campingpl[aä]tze?|kampeer\w*)\b/ig,town:/\b(towns?|villages?|cities|city|dorp(?:en)?|stad|steden|orte?|stadt|st[aä]dte|d[oö]rfer)\b/ig,station:/\b(train\s*stations?|rail(?:way)?\s*stations?|treinstations?|bahnh[oö]fe?|bahnhof)\b/ig,park:/\b(parks?|parken|parkverein)\b/ig,industry:/\b(indust\w*|bedrijventerrein|gewerbe\w*)\b/ig};
-  function requestedDistances(query){
-    const numbers=[...query.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:km|kilomet(?:er|re)s?|kilometer[n]?)\b/ig)].map(m=>({km:Number(m[1].replace(',','.')),index:m.index})).filter(x=>x.km>=.1&&x.km<=50);
-    const result={};for(const [kind,pattern] of Object.entries(distanceTerms)){
-      const terms=[...query.matchAll(pattern)];let best=null;
-      for(const term of terms)for(const number of numbers){const gap=Math.abs(term.index-number.index);const between=query.slice(Math.min(term.index,number.index),Math.max(term.index,number.index));if(gap>70||/[!?;\n]|\.(?!\d)|,(?!\d)|\b(?:and|und|en)\b/i.test(between))continue;if(!best||gap<best.gap)best={gap,km:number.km};}
-      if(best)result[kind]=best.km;
-    }
-    return result;
-  }
+  const searchCore=window.PlanViewSearchCore;
+  const distanceDefaults=searchCore.defaults;
   function wantsNearbyHomes(query){return /\b(?:houses?|homes?|dwellings?|wohnh[aä]us\w*|wohnh[aä]user\w*|wohnungen?|huizen|woningen|geb[aä]ude\w*)\b/i.test(query)&&/\b(?:near(?:by)?|around|close|surrounding|neighbou?r|corner|in der n[aä]he|umgebung|umkreis|rundherum|nabij|omgeving|buurt|nebenan|um die ecke|gleich um)\b/i.test(query);}
   function requestedHomeRadius(query){const m=query.match(/(?:houses?|homes?|wohnh[aä]us\w*|wohnh[aä]user\w*|huizen|woningen|geb[aä]ude\w*).{0,45}?(\d{2,4})\s*(?:m|meter[n]?)\b|\b(\d{2,4})\s*(?:m|meter[n]?).{0,45}?(?:houses?|homes?|wohnh[aä]us\w*|wohnh[aä]user\w*|huizen|woningen|geb[aä]ude\w*)/i);return m?Math.max(50,Math.min(1000,Number(m[1]||m[2]))):250;}
   function completeInterpretation(raw,query){
-    const spec=normalize(raw),explicit=requestedDistances(query);spec.distanceKm={...distanceDefaults,...explicit};spec.nearbyHomes=wantsNearbyHomes(query);spec.homeRadiusM=requestedHomeRadius(query);
-    if(spec.nearbyHomes)spec.unsupported=spec.unsupported.filter(x=>!/(houses?|homes?|wohnha|huizen|woningen|geb[aä]ude|BAG)/i.test(x));
-    if(spec.nearbyHomes)spec.explanation=tr('Planning and mapped surroundings are screened first. Nearby residential buildings are then checked with BAG for the first 12 candidates.','Eerst worden plannen en omgeving gecontroleerd. Daarna worden woongebouwen bij de eerste 12 kandidaten met BAG gecontroleerd.','Zuerst werden Pläne und kartierte Umgebung geprüft. Wohngebäude im Umfeld werden anschließend für die ersten 12 Kandidaten mit BAG geprüft.');
-    for(const kind of Object.keys(explicit))if(kind==='camping'&&spec.nearCamping||kind==='industry'&&spec.avoidIndustry||kind==='station'&&spec.nearFeatures.includes('station')||kind==='park'&&spec.nearFeatures.includes('park'))spec.unsupported=spec.unsupported.filter(x=>!new RegExp(`${kind==='camping'?'camp|ferien|kampeer':kind==='industry'?'industr|gewerbe|bedrijf':kind==='station'?'station|bahnhof|trein':'park'}`,'i').test(x));
-    if(Object.keys(explicit).length)spec.unsupported=spec.unsupported.filter(x=>!/(distance|abstand|entfern|radius|umkreis|kilomet|\bkm\b)/i.test(x)||/(noise|sound|l[aä]rm|preis|price|hectare|m²)/i.test(x));
+    const spec=normalize(raw);spec.distanceRules=searchCore.resolveRules(raw.distanceRules,query,spec);
+    spec.distanceKm=Object.fromEntries(searchCore.kinds.map(kind=>[kind,spec.distanceRules[kind].maxKm??spec.distanceRules[kind].minKm??distanceDefaults[kind]]));
+    spec.nearbyHomes=wantsNearbyHomes(query);spec.homeRadiusM=requestedHomeRadius(query);
+    if(spec.nearbyHomes)spec.explanation=[spec.explanation,tr('Planning and mapped surroundings are screened first. Nearby residential buildings are then checked with BAG for the first 12 candidates.','Eerst worden plannen en omgeving gecontroleerd. Daarna worden woongebouwen bij de eerste 12 kandidaten met BAG gecontroleerd.','Zuerst werden Pläne und kartierte Umgebung geprüft. Wohngebäude im Umfeld werden anschließend für die ersten 12 Kandidaten mit BAG geprüft.')].filter(Boolean).join(' ');
     return spec;
   }
   function localInterpret(query) {
@@ -129,7 +119,7 @@
     try{return await advanced.statusRequest;}finally{advanced.statusRequest=null;}
   }
   window.addEventListener('planview-ai-change',()=>refreshBackendStatus({force:true}));
-  function normalize(raw){const build=raw.potentialBuildingLand===true;return {groups:[...new Set((Array.isArray(raw.groups)?raw.groups:[]).filter(g=>allowedGroups.has(g)))],statuses:[...new Set((Array.isArray(raw.statuses)?raw.statuses:[]).filter(s=>allStatus.includes(s)))],requireEnvelope:raw.requireEnvelope===true||build,requireUnbuilt:raw.requireUnbuilt===true||build,nearCamping:raw.nearCamping===true&&raw.insideCamping!==true,insideCamping:raw.insideCamping===true,accommodationIntent:raw.accommodationIntent==='accommodation'?'accommodation':'none',nearTown:raw.nearTown===true,nearFeatures:[...new Set((Array.isArray(raw.nearFeatures)?raw.nearFeatures:[]).filter(k=>k in nearbyTypes))],avoidIndustry:raw.avoidIndustry===true,preferQuiet:raw.preferQuiet===true,potentialBuildingLand:build,includeReviewLeads:raw.includeReviewLeads===true,unsupported:Array.isArray(raw.unsupported)?raw.unsupported.slice(0,4).map(String):[],explanation:String(raw.explanation||''),engine:backendMetadata(raw).model||'local',...backendMetadata(raw),fallbackReason:['backend-unavailable','status-unavailable','interpretation-unavailable'].includes(raw.fallbackReason)?raw.fallbackReason:''};}
+  function normalize(raw){const build=raw.potentialBuildingLand===true;return {distanceRules:searchCore.cleanRules(raw.distanceRules),groups:[...new Set((Array.isArray(raw.groups)?raw.groups:[]).filter(g=>allowedGroups.has(g)))],statuses:[...new Set((Array.isArray(raw.statuses)?raw.statuses:[]).filter(s=>allStatus.includes(s)))],requireEnvelope:raw.requireEnvelope===true||build,requireUnbuilt:raw.requireUnbuilt===true||build,nearCamping:raw.nearCamping===true&&raw.insideCamping!==true,insideCamping:raw.insideCamping===true,accommodationIntent:raw.accommodationIntent==='accommodation'?'accommodation':'none',nearTown:raw.nearTown===true,nearFeatures:[...new Set((Array.isArray(raw.nearFeatures)?raw.nearFeatures:[]).filter(k=>k in nearbyTypes))],avoidIndustry:raw.avoidIndustry===true,preferQuiet:raw.preferQuiet===true,potentialBuildingLand:build,includeReviewLeads:raw.includeReviewLeads===true,unsupported:Array.isArray(raw.unsupported)?raw.unsupported.slice(0,30).map(String):[],explanation:String(raw.explanation||''),engine:backendMetadata(raw).model||'local',...backendMetadata(raw),fallbackReason:['backend-unavailable','status-unavailable','interpretation-unavailable'].includes(raw.fallbackReason)?raw.fallbackReason:''};}
   async function interpret(query,context){
     // Refresh before each actual interpretation, including after a server restart.
     // Opening the panel shares an in-flight request and uses only a brief status cache.
@@ -158,7 +148,7 @@
     const box=$('advanced-parsed');box.hidden=false;advanced.interpretation=spec;
     const chips=[...spec.groups.map(g=>g),...spec.statuses,...(spec.requireEnvelope?[tr('Building envelope','Bouwvlak','Baufenster')]:[]),...(spec.requireUnbuilt?[tr('No mapped building at point','Geen gebouw op punt','Kein Gebäude am Punkt')]:[]),...(spec.insideCamping?[tr('Inside mapped campsite boundary','Binnen campinggrens','Innerhalb der Campinggrenze')]:[]),...(spec.accommodationIntent==='accommodation'?[tr('Accommodation rules: review','Verblijfsregels: controleren','Unterkunftsregeln: prüfen')]:[]),...(spec.preferQuiet?[tr('Quietness: unverified','Rust: niet gecontroleerd','Ruhe: ungeprüft')]:[])];
     const distances=[...(spec.nearCamping?[['camping',tr('Camping or holiday park','Camping of vakantiepark','Camping- oder Ferienpark'),'<']]:[]),...(spec.nearTown?[['town',tr('Town','Plaats','Ort'),'<']]:[]),...spec.nearFeatures.map(kind=>[kind,tr(...nearbyTypes[kind].label),'<']),...(spec.avoidIndustry?[['industry',tr('Mapped industry','Gekarteerde industrie','Kartierte Industrie'),'>']]:[])];
-    box.innerHTML=`<div class="advanced-engine" data-pv-managed>${safe(interpretationLabel(spec))}</div><strong class="pv-criteria-title">${safe(tr('Check the interpreted criteria','Controleer de zoekcriteria','Erkannte Kriterien prüfen'))}</strong>${spec.explanation?`<p class="advanced-explanation">${safe(spec.explanation)}</p>`:''}${chips.length?`<div class="advanced-chips">${chips.map(x=>`<span>${safe(x)}</span>`).join('')}</div>`:''}${distances.length?`<div class="pv-distance-editors">${distances.map(([kind,label,operator])=>`<label>${safe(label)} <span>${operator==='<'?'≤':'≥'}</span><input type="number" data-distance-kind="${kind}" min="0.1" max="50" step="0.1" value="${spec.distanceKm[kind]}"> km</label>`).join('')}</div><p class="pv-criteria-note">${safe(tr('Straight-line distance to mapped features; edit before searching.','Hemelsbrede afstand tot kaartobjecten; pas aan voor zoeken.','Luftlinie zu kartierten Objekten; vor der Suche anpassen.'))}</p>`:''}${spec.nearbyHomes?`<label class="pv-home-editor">${safe(tr('Residential buildings nearby · BAG screening within','Woningen in de buurt · BAG-controle binnen','Wohngebäude in der Nähe · BAG-Prüfung im Umkreis von'))} <input type="number" data-home-radius min="50" max="1000" step="50" value="${spec.homeRadiusM}"> m <span>${safe(tr('Provisional until checked','Voorlopig tot gecontroleerd','Bis zur Prüfung vorläufig'))}</span></label>`:''}${spec.unsupported.map(x=>`<p class="advanced-warning">${safe(tr('Needs separate review:','Apart controleren:','Gesondert prüfen:'))} ${safe(x)}</p>`).join('')}`;
+    box.innerHTML=`<div class="advanced-engine" data-pv-managed>${safe(interpretationLabel(spec))}</div><strong class="pv-criteria-title">${safe(tr('Check the interpreted criteria','Controleer de zoekcriteria','Erkannte Kriterien prüfen'))}</strong>${spec.explanation?`<p class="advanced-explanation">${safe(spec.explanation)}</p>`:''}${chips.length?`<div class="advanced-chips">${chips.map(x=>`<span>${safe(x)}</span>`).join('')}</div>`:''}${distances.length?`<div class="pv-distance-editors">${distances.map(([kind,label])=>`<fieldset class="pv-distance-range"><legend>${safe(label)}</legend>${['minKm','maxKm'].map(bound=>`<label>${bound==='minKm'?'≥':'≤'} <input type="number" data-distance-kind="${kind}" data-distance-bound="${bound}" min="0" max="50" step="0.01" placeholder="—" value="${spec.distanceRules[kind][bound]??''}"> km</label>`).join('')}</fieldset>`).join('')}</div><p class="pv-criteria-note">${safe(tr('Straight-line distance to mapped features; edit before searching.','Hemelsbrede afstand tot kaartobjecten; pas aan voor zoeken.','Luftlinie zu kartierten Objekten; vor der Suche anpassen.'))}</p>`:''}${spec.nearbyHomes?`<label class="pv-home-editor">${safe(tr('Residential buildings nearby · BAG screening within','Woningen in de buurt · BAG-controle binnen','Wohngebäude in der Nähe · BAG-Prüfung im Umkreis von'))} <input type="number" data-home-radius min="50" max="1000" step="50" value="${spec.homeRadiusM}"> m <span>${safe(tr('Provisional until checked','Voorlopig tot gecontroleerd','Bis zur Prüfung vorläufig'))}</span></label>`:''}${spec.unsupported.map(x=>`<p class="advanced-warning">${safe(tr('Needs separate review:','Apart controleren:','Gesondert prüfen:'))} ${safe(x)}</p>`).join('')}`;
   }
   // One research workspace owns the request, result list and local history.
   // Keep the original form/result nodes so existing search and manual hooks still apply.
@@ -269,12 +259,21 @@
     return municipality;
   }
   function selectedScope(query=''){
-    const choice=$('advanced-scope-select').value;
-    if(choice==='drawn')return advanced.bounds?{bounds:advanced.bounds,name:'marked area'}:null;
-    if(choice==='municipality'){const m=selectedMunicipality(query);return m?{bounds:L.latLngBounds(boundsOf(m.bounds)),name:m.name,municipality:m.code}:null;}
-    if(choice==='province'){const province=selectedProvince();return province?{bounds:L.latLngBounds(boundsOf(province.bounds)),name:province.name,province:province.code,geometry:province.geometry}:null;}
-    if(choice==='country')return {bounds:L.latLngBounds(REGION_BOUNDS),name:'Nederland · all 12 provinces'};
-    return {bounds:state.map.getBounds(),name:'current Netherlands map view'};
+    const choice=$('advanced-scope-select').value,location=searchCore.queryLocation(query,state.region);
+    if(location?.error==='type')return {error:tr(`The administrative type does not match ${location.names.join(', ')}. Choose the intended municipality or province.`,`Het gebiedstype past niet bij ${location.names.join(', ')}. Kies de bedoelde gemeente of provincie.`,`Der Gebietstyp passt nicht zu ${location.names.join(', ')}. Gewünschte Gemeinde oder Provinz auswählen.`)};
+    if(location?.error)return {error:location.error==='ambiguous'?tr(`The place name is ambiguous (${location.names.join(', ')}). Choose the intended municipality or province.`,`De plaatsnaam is niet eenduidig (${location.names.join(', ')}). Kies de bedoelde gemeente of provincie.`,`Der Ortsname ist mehrdeutig (${location.names.join(', ')}). Gewünschte Gemeinde oder Provinz auswählen.`):tr('Your request names several search areas. Choose one municipality or province before searching.','Je vraag noemt meerdere zoekgebieden. Kies eerst één gemeente of provincie.','Deine Anfrage nennt mehrere Suchgebiete. Vor der Suche eine Gemeinde oder Provinz auswählen.')};
+    const namedScope=location?{bounds:L.latLngBounds(boundsOf(location.place.bounds)),name:`${location.place.name} · ${tr('from your request','uit je vraag','aus deiner Anfrage')}`,geometry:location.place.geometry,[location.type]:location.place.code}:null;
+    if(choice==='view'&&namedScope)return namedScope;
+    let scope=null;
+    if(choice==='drawn')scope=advanced.bounds?{bounds:advanced.bounds,name:tr('marked area','gemarkeerd gebied','markierter Bereich')}:null;
+    else if(choice==='municipality'){const m=selectedMunicipality();scope=m?{bounds:L.latLngBounds(boundsOf(m.bounds)),name:m.name,municipality:m.code,geometry:m.geometry}:null;}
+    else if(choice==='province'){const province=selectedProvince();scope=province?{bounds:L.latLngBounds(boundsOf(province.bounds)),name:province.name,province:province.code,geometry:province.geometry}:null;}
+    else if(choice==='country')scope={bounds:L.latLngBounds(REGION_BOUNDS),name:'Nederland · all 12 provinces'};
+    else scope={bounds:state.map.getBounds(),name:tr('current Netherlands map view','huidige Nederlandse kaartweergave','aktueller Niederlande-Kartenausschnitt')};
+    if(!location||!scope)return scope;
+    const compatible=location.type==='municipality'?scope.municipality===location.place.code:scope.province===location.place.code||scope.municipality&&state.region.municipalities.find(m=>m.code===scope.municipality)?.province===location.place.code;
+    if(!compatible)return {error:tr(`Your request names ${location.place.name}, but the selected search area is ${scope.name}. Select that municipality/province, or choose Current map view to use the place in your request.`,`Je vraag noemt ${location.place.name}, maar het gekozen zoekgebied is ${scope.name}. Selecteer die gemeente/provincie, of kies Huidige kaartweergave om de plaats uit je vraag te gebruiken.`,`Deine Anfrage nennt ${location.place.name}, ausgewählt ist aber ${scope.name}. Wähle die passende Gemeinde/Provinz oder Aktueller Kartenausschnitt, um den Ort aus der Anfrage zu verwenden.`)};
+    return scope;
   }
   function wantsMarkedArea(query){return /\b(marked|selected|drawn) (?:map )?area\b|\bmarkierte[nmrs]? (?:gebiete?s?|bereiche?s?)\b|\bgemarkeerd(?:e)? gebied\b/i.test(query);}
   function inScope(p,scope){return scope.bounds.contains([p.lat,p.lng])&&inNetherlands(p)&&(!scope.municipality||municipalityAt(p)?.code===scope.municipality)&&(!scope.province||geometryContains(scope.geometry,p));}
@@ -325,16 +324,17 @@
     return [...new Map(result.filter(x=>x.status==='fulfilled'&&x.value).map(x=>[`${x.value.group}:${x.value.designation}`,x.value])).values()].slice(0,6);
   }
   function haversine(a,b){const rad=Math.PI/180,lat=(b.lat-a.lat)*rad,lng=(b.lng-a.lng)*rad;const h=Math.sin(lat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(lng/2)**2;return 12742*Math.asin(Math.min(1,Math.sqrt(h)));}
-  function closest(point,items){let nearest=null;for(const item of items){const [west,south,east,north]=item.extent||[item.point.lng,item.point.lat,item.point.lng,item.point.lat];const edge={lat:Math.max(south,Math.min(north,point.lat)),lng:Math.max(west,Math.min(east,point.lng))};const km=haversine(point,edge);if(!nearest||km<nearest.km)nearest={km,item};}return nearest;}
+  function closest(point,items){return searchCore.nearest(point,items);}
   function contextNeeds(spec){return spec.nearCamping||spec.insideCamping||spec.nearTown||spec.nearFeatures.length>0||spec.avoidIndustry||spec.preferQuiet;}
   async function loadContext(scope,spec,status){
     if(!contextNeeds(spec))return {camping:[],towns:[],industry:[],roads:[],features:{},source:'none'};
-    const bounds=scope.bounds,maxDistance=Math.max(...Object.values(spec.distanceKm||distanceDefaults)),padding=Math.max(.12,Math.min(.75,maxDistance/65+.025));
-    const cacheKey=[bounds.getWest(),bounds.getSouth(),bounds.getEast(),bounds.getNorth(),padding].map(x=>x.toFixed(3)).join(':');
+    const bounds=scope.bounds,maxDistance=Math.max(...Object.values(spec.distanceRules||{}).flatMap(rule=>[rule.minKm||0,rule.maxKm||0]),...Object.values(spec.distanceKm||distanceDefaults));
+    const latPadding=Math.max(.12,maxDistance/110+.025),lngPadding=Math.max(.12,maxDistance/(110*Math.cos(bounds.getNorth()*Math.PI/180))+.025);
+    const cacheKey=[bounds.getWest(),bounds.getSouth(),bounds.getEast(),bounds.getNorth(),latPadding,lngPadding].map(x=>x.toFixed(5)).join(':');
     if(advanced.contextCache.has(cacheKey))return advanced.contextCache.get(cacheKey);
     status.textContent=tr('Checking official mapped places and surroundings…','Officiële plaatsen en omgeving controleren…','Amtlich erfasste Orte und Umgebung prüfen…');
     if(!advanced.contextData){const response=await fetch('data/netherlands_context.json');if(!response.ok)throw new Error('TOP10NL context unavailable');advanced.contextData=await response.json();}
-    const inside=item=>{const [west,south,east,north]=item.extent||[item.point.lng,item.point.lat,item.point.lng,item.point.lat];return east>=bounds.getWest()-padding&&west<=bounds.getEast()+padding&&north>=bounds.getSouth()-padding&&south<=bounds.getNorth()+padding;};
+    const inside=item=>{const [west,south,east,north]=item.extent||[item.point.lng,item.point.lat,item.point.lng,item.point.lat];return east>=bounds.getWest()-lngPadding&&west<=bounds.getEast()+lngPadding&&north>=bounds.getSouth()-latPadding&&south<=bounds.getNorth()+latPadding;};
     const sites=await window.planviewContext.load('camping');
     const mappedSites=sites.features.map(feature=>{const extent=feature._bounds;const p={lat:(extent[1]+extent[3])/2,lng:(extent[0]+extent[2])/2};return {id:feature.id,name:feature.properties.name,source:'PDOK TOP10NL',sourceUrl:feature.properties.sourceUrl,point:p,extent,geometry:feature.geometry};});
     const data=advanced.contextData,context={camping:mappedSites.filter(inside),towns:data.towns.filter(inside),industry:data.industry.filter(inside),roads:[],features:Object.fromEntries(Object.keys(nearbyTypes).map(kind=>[kind,(data.features?.[kind]||[]).filter(inside)])),source:'PDOK TOP10NL + ProRail'};
@@ -347,18 +347,17 @@
     if(spec.requireEnvelope){for(const item of spaced(envelopes.map(envelope=>({point:{lat:envelope.point[1],lng:envelope.point[0]},envelope})),3000))add({...item.point,envelope:item.envelope});}
     const anchors=spec.insideCamping?spaced(context.camping,80):spec.nearCamping?spaced(context.camping,24):spec.nearFeatures.length?spaced(context.features[spec.nearFeatures[0]],24):spec.nearTown?spaced(context.towns,24):[];
     if(spec.insideCamping)for(const item of anchors){const [west,south,east,north]=item.extent;for(let row=0;row<5;row++)for(let col=0;col<5;col++){const p={lat:south+(row+.5)*(north-south)/5,lng:west+(col+.5)*(east-west)/5};if(geometryContains(item.geometry,p)){add(p);break;}}}
-    if(anchors.length&&!spec.insideCamping){const radius=spec.nearCamping?spec.distanceKm.camping:spec.nearFeatures.length?spec.distanceKm[spec.nearFeatures[0]]:spec.distanceKm.town;const rings=[Math.min(.8,radius*.3),radius*.35,radius*.65,radius*.9].filter((km,i,all)=>km>.05&&all.findIndex(other=>Math.abs(other-km)<.05)===i);for(const km of rings)for(const bearing of [0,90,180,270,45,135,225,315])for(const anchor of anchors)add({...offsetPoint(anchor.point,km,bearing),searchRing:km});}
+    if(anchors.length&&!spec.insideCamping){const anchorKind=spec.nearCamping?'camping':spec.nearFeatures.length?spec.nearFeatures[0]:'town',rule=spec.distanceRules[anchorKind],radius=rule.maxKm??Math.max(distanceDefaults[anchorKind],(rule.minKm||0)*1.8),floor=rule.minKm||0;const rings=[floor+(radius-floor)*.15,floor+(radius-floor)*.35,floor+(radius-floor)*.65,floor+(radius-floor)*.9].filter((km,i,all)=>km>.05&&all.findIndex(other=>Math.abs(other-km)<.05)===i);for(const km of rings)for(const bearing of [0,90,180,270,45,135,225,315])for(const anchor of anchors)add({...offsetPoint(anchor.point,km,bearing),searchRing:km});}
     for(const point of sampleGrid(scope,8,8))add(point);
     const eligible=all.map(point=>{
       const insideSite=spec.insideCamping?context.camping.find(item=>point.lng>=item.extent[0]&&point.lng<=item.extent[2]&&point.lat>=item.extent[1]&&point.lat<=item.extent[3]&&geometryContains(item.geometry,point)):null;
       if(spec.insideCamping&&!insideSite)return null;
       const camping=insideSite?{km:0,item:insideSite}:closest(point,context.camping),town=closest(point,context.towns),industry=closest(point,context.industry),road=closest(point,context.roads),nearFeatures=Object.fromEntries(spec.nearFeatures.map(kind=>[kind,closest(point,context.features[kind])]));
-      if(spec.nearCamping&&(!camping||camping.km>(spec.distanceKm?.camping||3)))return null;
-      if(spec.nearTown&&(!town||town.km>(spec.distanceKm?.town||6)))return null;
-      if(spec.nearFeatures.some(kind=>!nearFeatures[kind]||nearFeatures[kind].km>(spec.distanceKm?.[kind]||nearbyTypes[kind].km)))return null;
-      if(spec.avoidIndustry&&industry&&industry.km<(spec.distanceKm?.industry||1.2))return null;
+      const distanceChecks=[...(spec.nearCamping?[['camping',camping]]:[]),...(spec.nearTown?[['town',town]]:[]),...spec.nearFeatures.map(kind=>[kind,nearFeatures[kind]]),...(spec.avoidIndustry?[['industry',industry]]:[])].map(([kind,near])=>({kind,...searchCore.checkDistance(near,spec.distanceRules[kind])}));
+      if(distanceChecks.some(check=>!check.pass))return null;
+      const distanceMissing=distanceChecks.filter(check=>check.uncertain).map(check=>`distance:${check.kind}`);
       if(spec.preferQuiet&&road&&road.km<.35)return null;
-      return {point,envelopeSource:point.envelope||null,camping,town,industry,road,nearFeatures};
+      return {point,envelopeSource:point.envelope||null,camping,town,industry,road,nearFeatures,distanceMissing};
     }).filter(Boolean);
     if(spec.requireEnvelope)return [...spaced(eligible.filter(item=>item.envelopeSource),spec.insideCamping?18:60),...spaced(eligible.filter(item=>!item.envelopeSource),spec.insideCamping?6:20)].slice(0,spec.insideCamping?24:80);
     if(anchors.length&&!spec.insideCamping){
@@ -391,11 +390,8 @@
       const residential=data.features.filter(feature=>{
         const p=feature.properties||{},uses=Array.isArray(p.gebruiksdoel)?p.gebruiksdoel.join(' '):String(p.gebruiksdoel||'');
         if(!/woonfunctie/i.test(uses)||!/in gebruik/i.test(String(p.status||'')))return false;
-        const coordinates=[];const collect=value=>{if(Array.isArray(value)&&value.length>=2&&typeof value[0]==='number'&&typeof value[1]==='number')coordinates.push(value);else if(Array.isArray(value))value.forEach(collect);};collect(feature.geometry?.coordinates);
-        if(!coordinates.length)return false;
-        const west=Math.min(...coordinates.map(c=>c[0])),east=Math.max(...coordinates.map(c=>c[0])),south=Math.min(...coordinates.map(c=>c[1])),north=Math.max(...coordinates.map(c=>c[1]));
-        const edge={lat:Math.max(south,Math.min(north,point.lat)),lng:Math.max(west,Math.min(east,point.lng))};
-        const km=haversine(point,edge);return km<=radiusM/1000&&km>.008;
+        const km=searchCore.geometryDistance(point,feature.geometry);
+        return km!==null&&km<=radiusM/1000&&km>.008;
       });
       return {state:'checked',count:residential.length,partial:!!data.links?.some(link=>link.rel==='next')||data.features.some(feature=>feature.properties?.gebruiksdoel==null||feature.properties?.status==null)};
     })();advanced.bagCache.set(key,task);try{return await task;}catch(error){advanced.bagCache.delete(key);throw error;}
@@ -404,10 +400,10 @@
     if(!spec.nearbyHomes||!advanced.results.length)return;
     const leads=advanced.results.slice(0,12);status.textContent=tr(`Checking nearby BAG homes for ${leads.length} candidates…`,`BAG-woningen bij ${leads.length} kandidaten controleren…`,`BAG-Wohngebäude bei ${leads.length} Kandidaten prüfen…`);
     for(let offset=0;offset<leads.length;offset+=3){
-      await Promise.allSettled(leads.slice(offset,offset+3).map(async lead=>{try{lead.bag=await nearbyResidentialBuildings(lead.point,spec.homeRadiusM);if(lead.bag.count>0){lead.missing=lead.missing.filter(x=>x!=='nearbyHomes');lead.review=lead.missing.length>0;}}catch{lead.bag={state:'error'};}}));
+      await Promise.allSettled(leads.slice(offset,offset+3).map(async lead=>{try{lead.bag=await nearbyResidentialBuildings(lead.point,spec.homeRadiusM);if(lead.bag.count>0){lead.missing=lead.missing.filter(x=>x!=='nearbyHomes');lead.review=lead.missing.length>0;lead.score=scoreResult(lead,spec)-(lead.review?20:0);}}catch{lead.bag={state:'error'};}}));
       if(ticket!==advanced.ticket)return;showResults(spec);
     }
-    advanced.results=advanced.results.filter(lead=>!(lead.bag?.state==='checked'&&lead.bag.count===0&&!lead.bag.partial));
+    advanced.results=advanced.results.filter(lead=>!(lead.bag?.state==='checked'&&lead.bag.count===0&&!lead.bag.partial)).sort((a,b)=>Number(a.review)-Number(b.review)||b.score-a.score);
     showResults(spec);
   }
   function dsoEvidence(r){
@@ -427,7 +423,7 @@
     selectPoint(point);
     if(innerWidth>=1360&&advanced.open)setSearchTab('results');else setOpen(false);
   }
-  function missingText(code){return code==='bouwvlak'?tr('building envelope at this point','bouwvlak op dit punt','Baufenster am Prüfpunkt'):code==='unbuilt'?tr('no mapped building at this point','geen gebouw op dit punt','kein Gebäude am Prüfpunkt'):code==='quiet'?tr('quietness','rust','Ruhe'):code==='nearbyHomes'?tr('residential buildings nearby','woongebouwen in de buurt','Wohngebäude im Umfeld'):tr('other requested condition','andere gevraagde voorwaarde','weitere Suchbedingung');}
+  function missingText(code){if(code.startsWith('distance:'))return tr('precise distance to ','precieze afstand tot ','genauer Abstand zu ')+({camping:tr('campsite','camping','Campingplatz'),town:tr('town','plaats','Ort'),industry:tr('industry','industrie','Industrie')}[code.slice(9)]||tr(...nearbyTypes[code.slice(9)].label));return code==='bouwvlak'?tr('building envelope at this point','bouwvlak op dit punt','Baufenster am Prüfpunkt'):code==='unbuilt'?tr('no mapped building at this point','geen gebouw op dit punt','kein Gebäude am Prüfpunkt'):code==='quiet'?tr('quietness','rust','Ruhe'):code==='nearbyHomes'?tr('residential buildings nearby','woongebouwen in de buurt','Wohngebäude im Umfeld'):tr('other requested condition','andere gevraagde voorwaarde','weitere Suchbedingung');}
   function resultCard(r,i,spec){
     const label=r.review?tr('Candidate · checks open','Kandidaat · controles open','Kandidat · Prüfungen offen'):tr('Mapped criteria met · legal review open','Kaartcriteria voldaan · juridische toets open','Kartenkriterien erfüllt · Rechtsprüfung offen');
     const detail=r.review?`${safe(tr('To check:','Te controleren:','Zu prüfen:'))} ${safe(r.missing.map(missingText).join(', '))}`:`${safe(r.group)}${r.envelope?' · bouwvlak':''}${r.unbuilt?' · no mapped building at point':''}`;
@@ -474,11 +470,11 @@
   async function runSearch(manualSpec=null){
     const query=manualSpec?'Manual criteria':$('advanced-query').value.trim();if(!query){$('advanced-status').textContent='Describe the areas you want first.';$('advanced-query').focus();return;}
     if(!manualSpec&&wantsMarkedArea(query)){if(!advanced.bounds){startDrawing(true);return;}$('advanced-scope-select').value='drawn';}
-    const scope=selectedScope(query),status=$('advanced-status'),button=$('advanced-run');if(!scope){status.textContent=tr('Choose a province or municipality, zoom in, or mark an area.','Kies een provincie of gemeente, zoom in of markeer een gebied.','Provinz oder Gemeinde wählen, hineinzoomen oder einen Bereich markieren.');return;}
+    const scope=selectedScope(query),status=$('advanced-status'),button=$('advanced-run');if(scope?.error){status.textContent=scope.error;return;}if(!scope){status.textContent=tr('Choose a province or municipality, zoom in, or mark an area.','Kies een provincie of gemeente, zoom in of markeer een gebied.','Provinz oder Gemeinde wählen, hineinzoomen oder einen Bereich markieren.');return;}
     $('advanced-scope-label').textContent=scope.name;
     const scopeSignature=`${$('advanced-scope-select').value}:${scope.bounds.toBBoxString()}`;
     const pending=!manualSpec&&advanced.pending?.query===query&&advanced.pending?.scopeSignature===scopeSignature?advanced.pending:null;
-    if(pending){for(const input of $('advanced-parsed').querySelectorAll('input'))if(!input.reportValidity())return;for(const input of $('advanced-parsed').querySelectorAll('[data-distance-kind]'))pending.spec.distanceKm[input.dataset.distanceKind]=Number(input.value);if($('advanced-parsed').querySelector('[data-home-radius]'))pending.spec.homeRadiusM=Number($('advanced-parsed').querySelector('[data-home-radius]').value);}
+    if(pending){for(const input of $('advanced-parsed').querySelectorAll('input'))if(!input.reportValidity())return;for(const input of $('advanced-parsed').querySelectorAll('[data-distance-kind]'))pending.spec.distanceRules[input.dataset.distanceKind][input.dataset.distanceBound]=input.value===''?null:Number(input.value);for(const kind of searchCore.kinds){const rule=pending.spec.distanceRules[kind];if(rule.minKm!==null&&rule.maxKm!==null&&rule.minKm>rule.maxKm){$('advanced-status').textContent=tr('Minimum distance must not exceed maximum distance.','Minimumafstand mag niet groter zijn dan maximumafstand.','Mindestabstand darf den Höchstabstand nicht überschreiten.');return;}}pending.spec.distanceKm=Object.fromEntries(searchCore.kinds.map(kind=>[kind,pending.spec.distanceRules[kind].maxKm??pending.spec.distanceRules[kind].minKm??distanceDefaults[kind]]));if($('advanced-parsed').querySelector('[data-home-radius]'))pending.spec.homeRadiusM=Number($('advanced-parsed').querySelector('[data-home-radius]').value);}
     const ticket=++advanced.ticket;button.disabled=true;advanced.filter='all';window.dispatchEvent(new CustomEvent('planview-search-busy',{detail:{busy:true}}));advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';advanced.hasSearched=Boolean(manualSpec||pending);setSearchTab(manualSpec||pending?'results':'request');window.dispatchEvent(new CustomEvent('planview-search-results'));if(!pending)$('advanced-parsed').hidden=true;
     try{
       const rough=pending?.spec||normalize(manualSpec||localInterpret(query));
@@ -488,12 +484,12 @@
       ]);
       if(ticket!==advanced.ticket)return;
       status.textContent=tr('Understanding your purpose and the sampled plan areas…','Je vraag en de bemonsterde plangebieden begrijpen…','Suchziel und geprüfte Plangebiete abgleichen…');
-      const spec=manualSpec?{...normalize(manualSpec),engine:'manual',distanceKm:{...distanceDefaults,...manualSpec.distanceKm},nearbyHomes:!!manualSpec.nearbyHomes,homeRadiusM:manualSpec.homeRadiusM||250}:pending?.spec||completeInterpretation(await interpret(query,{scope:scope.name,interfaceLanguage:document.documentElement.lang,sampledPlanFeatures,nearbyFeatureCounts:nearby?{camping:nearby.camping.length,towns:nearby.towns.length,industry:nearby.industry.length,roads:nearby.roads.length,...Object.fromEntries(Object.entries(nearby.features).map(([kind,items])=>[kind,items.length]))}:{},nearbyExamples:nearby?[...nearby.camping.slice(0,2),...nearby.towns.slice(0,2),...nearby.features.station.slice(0,2)].map(item=>item.name).filter(Boolean):[]}),query);if(ticket!==advanced.ticket||!manualSpec&&query!==$('advanced-query').value.trim())return;renderInterpretation(spec);
+      const spec=manualSpec?{...normalize(manualSpec),engine:'manual',distanceKm:{...distanceDefaults,...manualSpec.distanceKm},nearbyHomes:!!manualSpec.nearbyHomes,homeRadiusM:manualSpec.homeRadiusM||250,distanceRules:searchCore.resolveRules(manualSpec.distanceRules,'',manualSpec)}:pending?.spec||completeInterpretation(await interpret(query,{scope:scope.name,interfaceLanguage:document.documentElement.lang,sampledPlanFeatures,nearbyFeatureCounts:nearby?{camping:nearby.camping.length,towns:nearby.towns.length,industry:nearby.industry.length,roads:nearby.roads.length,...Object.fromEntries(Object.entries(nearby.features).map(([kind,items])=>[kind,items.length]))}:{},nearbyExamples:nearby?[...nearby.camping.slice(0,2),...nearby.towns.slice(0,2),...nearby.features.station.slice(0,2)].map(item=>item.name).filter(Boolean):[]}),query);if(ticket!==advanced.ticket||!manualSpec&&query!==$('advanced-query').value.trim())return;renderInterpretation(spec);
       if(!manualSpec&&!pending){advanced.pending={query,scopeSignature,spec};button.textContent=tr('Search with these criteria','Zoeken met deze criteria','Mit diesen Kriterien suchen');status.textContent=tr('Review the distances and unverified conditions, then start the map search.','Controleer afstanden en open voorwaarden; start daarna de kaartzoekopdracht.','Entfernungen und offene Bedingungen prüfen, dann die Kartensuche starten.');return;}
       advanced.pending=null;button.textContent=tr('Find areas','Gebieden vinden','Gebiete finden');
       if(spec.unsupported.length)status.textContent=tr('Some conditions need manual review; map-supported criteria will still be screened.','Sommige voorwaarden moeten handmatig worden beoordeeld; de kaartcriteria worden wel gecontroleerd.','Einige Bedingungen brauchen eine manuelle Prüfung; die kartierbaren Kriterien werden trotzdem geprüft.');
       if(!spec.groups.length&&!spec.statuses.length&&!spec.requireEnvelope&&!spec.requireUnbuilt&&!spec.nearbyHomes&&!contextNeeds(spec)){status.textContent='No searchable map criterion recognized.';return;}
-      const context=nearby&&(!(spec.nearCamping||spec.insideCamping)||(rough.nearCamping||rough.insideCamping))&&(!spec.nearTown||rough.nearTown)&&(!spec.avoidIndustry||rough.avoidIndustry)&&(!spec.preferQuiet||rough.preferQuiet)?nearby:await loadContext(scope,spec,status);if(ticket!==advanced.ticket)return;
+      const context=await loadContext(scope,spec,status);if(ticket!==advanced.ticket)return;
       if((spec.nearCamping||spec.insideCamping)&&!context.camping.length){status.textContent=tr('No mapped campsites returned for this area. Try a smaller map view or another municipality.','Geen ingetekende campings gevonden. Kies een kleiner gebied of andere gemeente.','Keine erfassten Campingplätze gefunden. Kleineren Ausschnitt oder andere Gemeinde wählen.');return;}
       if(spec.nearTown&&!context.towns.length){status.textContent=tr('No mapped towns returned for this area. Try a larger map view.','Geen plaatsen gevonden. Kies een groter gebied.','Keine Orte gefunden. Größeren Ausschnitt wählen.');return;}for(const kind of spec.nearFeatures)if(!context.features[kind].length){status.textContent=`${tr('No mapped','Geen ingetekend','Keine erfassten')} ${tr(...nearbyTypes[kind].label)} ${tr('found near this area. Choose a larger search area.','gevonden. Kies een groter zoekgebied.','nahe diesem Gebiet gefunden. Größeres Suchgebiet wählen.')}`;return;}
       const envelopes=spec.requireEnvelope?await loadEnvelopeIndex(scope,status):[];if(ticket!==advanced.ticket)return;
@@ -520,11 +516,11 @@
           }
           const geometryMissing=[];if(spec.requireEnvelope&&!envelope)geometryMissing.push('bouwvlak');if(spec.requireUnbuilt&&!unbuilt)geometryMissing.push('unbuilt');
           if(geometryMissing.length&&(!(spec.potentialBuildingLand||spec.includeReviewLeads)||!buildReviewGroups.has(group)))return null;
-          const missing=[...geometryMissing];if(spec.preferQuiet)missing.push('quiet');if(spec.nearbyHomes)missing.push('nearbyHomes');if(spec.unsupported.length)missing.push('unsupported');const review=missing.length>0;
+          const missing=[...geometryMissing,...candidate.distanceMissing];if(spec.preferQuiet)missing.push('quiet');if(spec.nearbyHomes)missing.push('nearbyHomes');if(spec.unsupported.length)missing.push('unsupported');const review=missing.length>0;
           const result={...candidate,feature,group,status:planStatus,name:props.naam||group,sourceId:props.plangebied||'',municipality:municipalityAt(point)?.name,envelope,unbuilt,envelopeGeometry,envelopeId,envelopeDate,envelopeStatus,review,missing};result.score=scoreResult(result,spec)-(review?20:0);return result;
         }));
         if(ticket!==advanced.ticket)return;
-        for(const item of batch){if(item.status==='rejected'){failed++;continue;}const r=item.value;if(!r)continue;const key=r.feature.properties?.identificatie||`${r.sourceId}:${r.name}:${r.point.lat.toFixed(4)}:${r.point.lng.toFixed(4)}`;const target=r.review?reviewFound:found;if(!target.has(key)||target.get(key).score<r.score)target.set(key,r);}
+        for(const item of batch){if(item.status==='rejected'){failed++;continue;}const r=item.value;if(!r)continue;const key=searchCore.resultKey(r);const target=r.review?reviewFound:found;if(!target.has(key)||target.get(key).score<r.score)target.set(key,r);}
         advanced.results=[...found.values()].sort((a,b)=>b.score-a.score).concat([...reviewFound.entries()].filter(([key])=>!found.has(key)).map(([,r])=>r).sort((a,b)=>b.score-a.score)).slice(0,40);if(offset%12===0||offset+6>=candidates.length)showResults(spec);
         status.textContent=`Checked ${Math.min(offset+6,candidates.length)} of ${candidates.length} locations · ${advanced.results.length} map areas highlighted…`;
       }

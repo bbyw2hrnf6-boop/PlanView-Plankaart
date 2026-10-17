@@ -68,7 +68,7 @@ def main():
             target=(checkout/Path(*relative.parts[1:])) if relative.parts[0]=='cloud' else (stage/relative)
             target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,target)
         if fingerprint(assets())!=current['fingerprint']:raise ValueError('Source changed during staging; retry once it is stable')
-        release={k:current[k] for k in ['version','fingerprint','file_count']};release.update({'cloud_url':URL,'cloud_ai':True,'cloud_ai_requires_key':True,'cloud_dso':False})
+        release={k:current[k] for k in ['version','fingerprint','file_count']};release.update({'cloud_url':URL,'cloud_ai':True,'cloud_ai_requires_key':True,'cloud_dso':False,'cloud_dso_rule_text':True})
         write_json(stage/'release.json',release)
         (checkout/'planview.html').write_text((ROOT/'index.html').read_text())
         dist=checkout/'public'

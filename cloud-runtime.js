@@ -11,7 +11,7 @@
     const release=window.planviewRuntime.release;
     footer.append(document.createTextNode(`${isLocal?tr('Local','Lokaal','Lokal'):tr('Web version','Webversie','Webversion')} · ${release?.version||tr('Version unavailable','Versie niet beschikbaar','Version nicht verfügbar')} · `));
     const link=document.createElement('a');link.href=cloudUrl;link.target='_blank';link.rel='noopener noreferrer';link.textContent=tr('Open web version','Webversie openen','Webversion öffnen');footer.append(link);
-    if(!isLocal)footer.append(document.createTextNode(tr(' · Saved cases and settings stay in this browser.',' · Opgeslagen dossiers en instellingen blijven in deze browser.',' · Gespeicherte Fälle und Einstellungen bleiben in diesem Browser.')));
+    if(!isLocal)footer.append(document.createTextNode(tr(' · Saved cases and appearance stay in this browser; service keys are encrypted for your web account.',' · Dossiers en weergave blijven in deze browser; servicesleutels zijn versleuteld in je webaccount.',' · Fälle und Darstellung bleiben in diesem Browser; Dienstschlüssel sind im Webkonto verschlüsselt.')));
   }
   window.addEventListener('planview-language-change',render);
   window.addEventListener('load',async()=>{try{const response=await fetch('./release.json',{cache:'no-store'});if(response.ok)window.planviewRuntime.release=await response.json();}catch{}render();});

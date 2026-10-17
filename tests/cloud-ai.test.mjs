@@ -5,12 +5,13 @@ import { readFileSync } from 'node:fs';
 import { handleApi, callOpenAI, cleanInput } from '../cloud/lib/ai.mjs';
 const schema=JSON.parse(readFileSync(new URL('../search_filters.schema.json', import.meta.url)));
 const config=JSON.parse(readFileSync(new URL('../search_config.json', import.meta.url)));
-const fixture=Object.fromEntries(Object.entries(schema.properties).map(([k,s])=>[k,s.type==='boolean'?false:s.type==='array'?[]:s.enum?s.enum[0]:'Interpreted request.']));
+const fixtureValue=s=>{const type=Array.isArray(s.type)?'null':s.type;return type==='null'?null:type==='object'?Object.fromEntries(Object.entries(s.properties).map(([k,v])=>[k,fixtureValue(v)])):type==='boolean'?false:type==='array'?[]:type==='number'?0:s.enum?s.enum[0]:'Interpreted request.';};
+const fixture=fixtureValue(schema);
 const key='sk-planview-test-value-not-a-real-key';
 const origin='https://planview.test';
 function env(){
   const sqlite=new DatabaseSync(':memory:');
-  sqlite.exec('CREATE TABLE ai_credentials (user_id TEXT PRIMARY KEY, ciphertext TEXT NOT NULL, iv TEXT NOT NULL, updated_at INTEGER NOT NULL); CREATE TABLE ai_usage (user_id TEXT PRIMARY KEY, window_start INTEGER NOT NULL, requests INTEGER NOT NULL, busy_until INTEGER NOT NULL);');
+  sqlite.exec('CREATE TABLE ai_credentials (user_id TEXT PRIMARY KEY, ciphertext TEXT NOT NULL, iv TEXT NOT NULL, updated_at INTEGER NOT NULL); CREATE TABLE source_credentials (user_id TEXT NOT NULL, provider TEXT NOT NULL, ciphertext TEXT NOT NULL, iv TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(user_id,provider)); CREATE TABLE ai_usage (user_id TEXT PRIMARY KEY, window_start INTEGER NOT NULL, requests INTEGER NOT NULL, busy_until INTEGER NOT NULL);');
   const DB={prepare(sql){return {bind(...args){const stmt=sqlite.prepare(sql);return {first:async()=>stmt.get(...args)||null,run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
   return {DB,sqlite,PLANVIEW_CREDENTIAL_KEY:btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))};
 }
@@ -23,7 +24,7 @@ test('keys are encrypted, never echoed, tied to identity and removable',async()=
   assert.equal((await (await run(e,'owner','/api/status')).json()).available,true);
   assert.equal((await (await run(e,'other','/api/status')).json()).available,false);
   assert.equal((await run(e,'other','/api/interpret',{query:'Residential land'})).status,409);
-  r=await run(e,'owner','/api/interpret',{query:'Quiet residential land',context:{apiKey:'never send this'}});assert.equal(r.status,200);assert.equal((await r.json()).preferQuiet,true);
+  r=await run(e,'owner','/api/interpret',{query:'Quiet residential land',context:{apiKey:'never send this'}});assert.equal(r.status,200);assert.equal((await r.json()).preferQuiet,false);
   assert.equal((await (await run(e,'owner','/api/ai/test',{})).json()).ok,true);
   await run(e,'owner','/api/ai/settings',{key:''});assert.equal(e.sqlite.prepare('SELECT COUNT(*) AS n FROM ai_credentials').get().n,0);
   assert.equal((await run(e,'owner','/api/interpret',{query:'Residential land'})).status,409);
@@ -50,4 +51,19 @@ test('bounded context, strict model schema, numeric quietness and API limits',as
   const invalid=async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{}'}]}]});await assert.rejects(()=>callOpenAI(key,{query:'x'},config,schema,invalid));
   const e=env();await run(e,'owner','/api/ai/settings',{key});for(let i=0;i<12;i++)assert.equal((await run(e,'owner','/api/interpret',{query:'Land'})).status,200);
   assert.equal((await run(e,'owner','/api/interpret',{query:'Land'})).status,429);
+});
+
+test('DSO keys are encrypted per web account; missing evidence never invokes AI',async()=>{
+ const e=env(),never=()=>{throw Error('Must not call provider');};
+ assert.equal((await run(e,'owner','/api/settings',{dso:'test-dso-key-123456'},never)).status,200);
+ const row=e.sqlite.prepare('SELECT * FROM source_credentials').get();assert.ok(!JSON.stringify(row).includes('test-dso-key-123456'));
+ assert.equal((await (await run(e,'other','/api/settings',undefined,never)).json()).configured.dso,false);
+ const r=await run(e,'other','/api/rules/search',{query:'Pool?',point:{x:180000,y:330000}},never);assert.equal((await r.json()).error,'dso_key_missing');
+ assert.equal((await run(e,'owner','/api/rules/search',{query:'Pool?',point:{x:1,y:2}},never)).status,400);
+ await run(e,'owner','/api/settings',{dso:''},never);assert.equal(e.sqlite.prepare('SELECT count(*) n FROM source_credentials').get().n,0);
+});
+test('distance schema is recursive, range-safe and does not overwrite explicit model intent',async()=>{
+ const goodValue=structuredClone(fixture);goodValue.distanceRules.station={minKm:.5,maxKm:2};const fetcher=async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(goodValue)}]}]});
+ const result=await callOpenAI(key,{query:'Not quiet; near industry within 1.2km'},config,schema,fetcher);assert.deepEqual(result.distanceRules.station,{minKm:.5,maxKm:2});assert.equal(result.preferQuiet,false);assert.equal(result.avoidIndustry,false);
+ goodValue.distanceRules.station.maxKm='2';await assert.rejects(()=>callOpenAI(key,{query:'x'},config,schema,fetcher));
 });

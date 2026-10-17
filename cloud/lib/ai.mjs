@@ -1,3 +1,5 @@
+import { fetchPointCorpus } from './rule-sources.mjs';
+import { cleanRuleInput, rankRuleSources, callRuleOpenAI } from './rule-answer.mjs';
 // Server-only PlanView API. No prompts, keys or results are logged or cached.
 export class ApiError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
@@ -25,18 +27,17 @@ async function storedKey(env, user) {
   const value = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decode(row.iv), additionalData: encoder.encode(`planview:v1:${user}`) }, await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY), decode(row.ciphertext));
   return new TextDecoder().decode(value);
 }
-export function validateFilters(value, schema) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || schema.required.some(key => !(key in value))) throw new ApiError(502, 'invalid_ai_response');
-  const clean = {};
-  for (const [key, spec] of Object.entries(schema.properties)) {
-    const item = value[key];
-    if (spec.type === 'boolean' && typeof item !== 'boolean' || spec.type === 'string' && (typeof item !== 'string' || item.length > 3000 || spec.enum && !spec.enum.includes(item))) throw new ApiError(502, 'invalid_ai_response');
-    if (spec.type === 'array' && (!Array.isArray(item) || item.length > 30 || item.some(entry => typeof entry !== 'string' || entry.length > 500 || spec.items.enum && !spec.items.enum.includes(entry)))) throw new ApiError(502, 'invalid_ai_response');
-    clean[key] = item;
-  }
-  if (clean.potentialBuildingLand) clean.requireEnvelope = clean.requireUnbuilt = true;
-  return clean;
+export function validateSchema(value,schema){
+ const types=Array.isArray(schema.type)?schema.type:[schema.type];
+ const type=value===null?'null':Array.isArray(value)?'array':typeof value;
+ if(!types.includes(type)||schema.enum&&!schema.enum.includes(value))throw new ApiError(502,'invalid_ai_response');
+ if(type==='number'&&(!Number.isFinite(value)||schema.minimum!==undefined&&value<schema.minimum||schema.maximum!==undefined&&value>schema.maximum))throw new ApiError(502,'invalid_ai_response');
+ if(type==='string'&&(value.length>(schema.maxLength||3000)))throw new ApiError(502,'invalid_ai_response');
+ if(type==='array'){if(value.length>(schema.maxItems||30))throw new ApiError(502,'invalid_ai_response');return value.map(x=>validateSchema(x,schema.items));}
+ if(type==='object'){if((schema.required||[]).some(k=>!(k in value))||schema.additionalProperties===false&&Object.keys(value).some(k=>!(k in schema.properties)))throw new ApiError(502,'invalid_ai_response');return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,validateSchema(v,schema.properties[k])]));}
+ return value;
 }
+export function validateFilters(value,schema){const clean=validateSchema(value,schema);for(const rule of Object.values(clean.distanceRules||{}))if(rule.minKm!==null&&rule.maxKm!==null&&rule.minKm>rule.maxKm)throw new ApiError(502,'invalid_ai_response');if(clean.potentialBuildingLand)clean.requireEnvelope=clean.requireUnbuilt=true;return clean;}
 export function cleanInput(payload) {
   if (!payload || typeof payload.query !== 'string' || !payload.query.trim() || payload.query.length > 1200) throw new ApiError(400, 'invalid_query');
   const c = payload.context ?? {};
@@ -49,19 +50,8 @@ export function cleanInput(payload) {
     nearbyExamples: (Array.isArray(c.nearbyExamples) ? c.nearbyExamples : []).filter(x => typeof x === 'string').slice(0, 6).map(x => x.slice(0, 80))
   } };
 }
-function stabilize(filters, query) {
-  if (/\b(quiet|silent|peaceful|ruhig|leise|still|stil|rustig)\b/i.test(query) && !/\b(?:\d+\s*dB|decibel|dezibel|geluidsniveau\s*\d+|noise level\s*\d+)\b/i.test(query)) {
-    filters.preferQuiet = true;
-    filters.unsupported = filters.unsupported.filter(x => !/(sound|noise|quiet|silent|l[aä]rm|ger[aä]usch|geluid|stilte|ruhe)/i.test(x));
-  }
-  if (/(baufenster|bouwvlak|building envelope)/i.test(query) && /(pr[uü]fhinweis|review lead|ter controle|onderzoeks?locatie)/i.test(query)) filters.requireEnvelope = filters.includeReviewLeads = true;
-  if (/(industrie|industry|industrial|bedrijventerrein)/i.test(query) && /1[,.]2\s*km/i.test(query)) {
-    filters.avoidIndustry = true;
-    filters.unsupported = filters.unsupported.filter(x => !/(industrie|industry|industrial|bedrijventerrein)/i.test(x));
-  }
-  if (/(plangrenz|plan boundar|plangrens)/i.test(query)) filters.unsupported = filters.unsupported.filter(x => !/(plangrenz|plan boundar|plangrens)/i.test(x));
-  return filters;
-}
+// Validated model intent is preserved; no keyword-based server overrides.
+const stabilize=(filters)=>filters;
 export async function callOpenAI(key, payload, config, schema, fetcher = fetch) {
   const { query, context } = cleanInput(payload);
   let response;
@@ -95,8 +85,8 @@ async function readBody(request, limit) {
   try { const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; } return JSON.parse(new TextDecoder().decode(bytes)); }
   catch { throw new ApiError(400, 'invalid_request'); }
 }
-async function acquire(env, user) {
-  const now = Date.now(), lease = now + 130000;
+async function acquire(env, user, leaseMs=130000) {
+  const now = Date.now(), lease = now + leaseMs;
   const result = await env.DB.prepare(`INSERT INTO ai_usage (user_id, window_start, requests, busy_until) VALUES (?, ?, 1, ?)
     ON CONFLICT(user_id) DO UPDATE SET window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END,
       requests = CASE WHEN window_start < ? THEN 1 ELSE requests + 1 END, busy_until = ?
@@ -104,18 +94,43 @@ async function acquire(env, user) {
   if (!result.meta.changes) throw new ApiError(429, 'request_limit');
   return lease;
 }
+async function storedDSOKey(env,user){
+ const row=await env.DB.prepare('SELECT ciphertext, iv FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first();if(!row)return null;
+ const value=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(row.iv),additionalData:encoder.encode(`planview:v1:${user}:dso`)},await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY),decode(row.ciphertext));return new TextDecoder().decode(value);
+}
+async function sourceSettings(env,user,payload){
+ if(payload!==undefined){if(!payload||Object.keys(payload).some(k=>k!=='dso')||typeof payload.dso!=='string')throw new ApiError(400,'invalid_source_settings');const key=payload.dso.trim();
+  if(!key)await env.DB.prepare('DELETE FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').run();
+  else{if(!/^[A-Za-z0-9_.~+/-]{8,256}$/.test(key))throw new ApiError(400,'invalid_source_key');const encrypted=await encryptKey(key,user+':dso',env.PLANVIEW_CREDENTIAL_KEY);await env.DB.prepare('INSERT INTO source_credentials (user_id, provider, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(user,'dso',encrypted.ciphertext,encrypted.iv,Date.now()).run();}}
+ const row=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first();return {configured:{dso:!!row,rp:false},storage:'cloud-account',capabilities:{ruleText:true,dsoGeometry:false}};
+}
+async function rulesSearch(payload,env,user,fetcher){
+ let input;try{input=cleanRuleInput(payload);}catch(error){throw new ApiError(400,error.message);}
+ const dso=await storedDSOKey(env,user);if(!dso)return json({state:'unavailable',error:'dso_key_missing',sources:[],coverage:{complete:false,documentsChecked:0,documentsAvailable:0,warnings:['dso_key_missing']}});
+ const lease=await acquire(env,user,200000);
+ try{const corpus=await fetchPointCorpus(input.point,dso,fetcher,{query:input.query}),ranked=rankRuleSources(corpus,input.query);const response={state:ranked.sources.length?'matches':'unavailable',sources:ranked.sources,coverage:ranked.coverage,point:input.point,checkedAt:corpus.availableAt};
+  if(input.planId)response.coverage.warnings.push('The clicked PDOK IMRO source may contain transitional planning rules not included in the DSO text corpus: '+input.planId);
+  if(!response.sources.length)return json(response);
+  const key=await storedKey(env,user);if(!key){response.coverage.warnings.push('api_key_missing');return json(response);}
+  try{response.answer=await callRuleOpenAI(key,input,response.sources,fetcher);response.state=response.answer.citations.length?'answered':'matches';}catch{response.coverage.warnings.push('ai_unavailable');}
+  return json(response);
+ }catch{throw new ApiError(502,'rule_sources_unavailable');}finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(user,lease).run();}
+}
 export async function handleApi(request, env, user, config, schema, fetcher = fetch) {
   try {
     if (!user) throw new ApiError(401, 'sign_in_required');
     const path = new URL(request.url).pathname;
     if (!env.DB || !env.PLANVIEW_CREDENTIAL_KEY) throw new ApiError(503, 'storage_unavailable');
+    if(request.method==='GET'&&path==='/api/settings')return json(await sourceSettings(env,user));
     if (request.method === 'GET' && (path === '/api/status' || path === '/api/ai/settings')) {
       const row = await env.DB.prepare('SELECT updated_at FROM ai_credentials WHERE user_id = ?').bind(user).first();
       return json({ app: 'planview', ...metadata, available: !!row, configured: !!row, storage: 'cloud-account', interpreterVersion: 3, updatedAt: row?.updated_at || null });
     }
     if (request.method !== 'POST') throw new ApiError(404, 'unknown_endpoint');
     if (request.headers.get('Origin') !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site' || request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json') throw new ApiError(403, 'same_origin_required');
-    const payload = await readBody(request, path === '/api/ai/settings' ? 2048 : 8192);
+    const payload = await readBody(request, ['/api/ai/settings','/api/settings'].includes(path) ? 2048 : 8192);
+    if(path==='/api/settings')return json(await sourceSettings(env,user,payload));
+    if(path==='/api/rules/search')return await rulesSearch(payload,env,user,fetcher);
     if (path === '/api/ai/settings') {
       if (!payload || Object.keys(payload).length !== 1 || typeof payload.key !== 'string') throw new ApiError(400, 'invalid_api_key_format');
       const value = payload.key.trim();

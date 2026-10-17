@@ -150,6 +150,7 @@ function geoToLatLng(feature){if(!feature?.geometry)return null;const unproject=
 function featuresAtPoint(features,p){const exact=features.filter(feature=>{const geo=geoToLatLng(feature);return geo&&['Polygon','MultiPolygon'].includes(geo.geometry.type)&&geometryContains(geo.geometry,p);});return exact.length?exact:features;}
 function drawSelection(primary,parcel,p){const group=state.detailLayers.selection;group.clearLayers();if(primary?.geometry){const geo=geoToLatLng(primary);if(geo)L.geoJSON(geo,{style:{color:'#082d3b',weight:4,fillColor:'#72e4c5',fillOpacity:.12,opacity:.95}}).addTo(group);}if(parcel?.geometry){const geo=geoToLatLng(parcel);if(geo)L.geoJSON(geo,{style:{color:'#fff',weight:2.5,dashArray:'5 5',fillOpacity:0}}).addTo(group);}const pin=state.detailLayers.pin;pin.clearLayers();L.circleMarker([p.lat,p.lng],{radius:7,color:'#0e2833',weight:3,fillColor:'#74e8c3',fillOpacity:1}).addTo(pin);updatePerspectiveSelection();}
 async function selectPoint(p){
+  window.planviewRulesSearch?.selectionChanged(p);
   state.selectionAbort?.abort();
   const selectionAbort=new AbortController();state.selectionAbort=selectionAbort;
   const ticket=++state.request;

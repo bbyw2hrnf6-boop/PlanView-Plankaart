@@ -108,6 +108,258 @@
         "accommodation"
       ],
       "description": "Use accommodation when the user asks about tiny houses, chalets, holiday accommodation or permanent residence. The app links plan rules but cannot verify permission automatically."
+    },
+    "distanceRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "camping": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "town": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "station": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "park": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "sports": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "cemetery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "swimming_pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "marina": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "industry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        }
+      },
+      "required": [
+        "camping",
+        "town",
+        "station",
+        "park",
+        "sports",
+        "cemetery",
+        "swimming_pool",
+        "marina",
+        "industry"
+      ],
+      "description": "Explicit straight-line distance constraints in kilometres. Convert metres to km. minKm means at least; maxKm means at most. Both for a range. Null/null when user gives no numeric constraint. All keys required."
     }
   },
   "required": [
@@ -125,6 +377,7 @@
     "unsupported",
     "explanation",
     "insideCamping",
-    "accommodationIntent"
+    "accommodationIntent",
+    "distanceRules"
   ]
 }
