@@ -1,24 +1,26 @@
-"""Build compact, spatially tiled Limburg bouwvlak data from PDOK's Wro extract.
+"""Build compact, spatially tiled Netherlands bouwvlak data from PDOK's Wro extract.
 
 Run from this project's root with ``python3 update_bouwvlakken.py``. The source is
 the nationwide Bouwvlak GML download, streamed without retaining it on disk.
-Only geometries whose representative point lies in Limburg are written.
+All non-historical Wro features in the European Netherlands are written.
 This is historical Wro plan evidence, not a current building-right decision.
 """
 import datetime as dt
 import gzip
 import json
 import math
+import os
+import shutil
 import urllib.request
 import xml.etree.ElementTree as ET
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = 'https://service.pdok.nl/kadaster/ruimtelijke-plannen/atom/downloads/Bouwvlak.gml.gz'
 FEED = 'https://service.pdok.nl/kadaster/ruimtelijke-plannen/atom/plu.xml'
-OUT = ROOT / 'data' / 'bouwvlakken'
+OUT = Path(os.environ.get('PLANVIEW_INDEX_OUT', ROOT / 'data' / 'bouwvlakken-next'))
 APP = '{http://www.opengis.net/gml}'
 GML = APP
 TILE_DEGREES = 0.1
@@ -49,21 +51,8 @@ def ring_contains(ring, point):
     return inside
 
 
-REGION = json.loads((ROOT / 'limburg.json').read_text())['province']['geometry']
-REGION_POLYGONS = REGION['coordinates'] if REGION['type'] == 'MultiPolygon' else [REGION['coordinates']]
-REGION_EDGES = []
-for poly in REGION_POLYGONS:
-    for ring in poly:
-        REGION_EDGES.append((min(p[0] for p in ring), min(p[1] for p in ring),
-                             max(p[0] for p in ring), max(p[1] for p in ring), ring))
-
-
 def in_region(point):
-    lng, lat = point
-    for west, south, east, north, ring in REGION_EDGES:
-        if west <= lng <= east and south <= lat <= north:
-            return ring_contains(ring, point)
-    return False
+    return 3.1 <= point[0] <= 7.3 and 50.7 <= point[1] <= 53.7
 
 
 def parse_ring(element):
@@ -103,8 +92,8 @@ def read_feature(member):
         return None
     lower = [float(v) for v in envelope.findtext(GML + 'lowerCorner', '').split()]
     upper = [float(v) for v in envelope.findtext(GML + 'upperCorner', '').split()]
-    # Generous RD bounding box for Limburg, before exact province filtering.
-    if len(lower) != 2 or len(upper) != 2 or upper[0] < 165000 or lower[0] > 216000 or upper[1] < 305000 or lower[1] > 424000:
+    # European Netherlands RD bounding box; municipal membership is checked at search time.
+    if len(lower) != 2 or len(upper) != 2 or upper[0] < -10000 or lower[0] > 310000 or upper[1] < 300000 or lower[1] > 640000:
         return None
     polygons = []
     for shape in item.findall('.//' + GML + 'Polygon'):
@@ -137,11 +126,13 @@ def main():
         source_updated = ET.fromstring(feed.read()).findtext('{http://www.w3.org/2005/Atom}updated')
     tiles = defaultdict(list)
     OUT.mkdir(parents=True, exist_ok=True)
-    for old in OUT.glob('*.json'):
+    for old in (p for p in OUT.iterdir() if p.name.endswith(('.json','.json.gz','.ndjson'))):
         old.unlink()
-    geo_files = {}
+    geo_files = OrderedDict()
     request = urllib.request.Request(SOURCE, headers={'User-Agent': 'PlanView/1.0 (public spatial research)'})
-    with urllib.request.urlopen(request, timeout=120) as response, gzip.GzipFile(fileobj=response) as stream:
+    local_source = os.environ.get('PLANVIEW_GML_SOURCE')
+    response = open(local_source, 'rb') if local_source else urllib.request.urlopen(request, timeout=120)
+    with response, gzip.GzipFile(fileobj=response) as stream:
         parser = ET.iterparse(stream, events=('start', 'end'))
         root = next(parser)[1]
         seen = 0
@@ -156,24 +147,28 @@ def main():
                 geometry = feature.pop('geometry')
                 tiles[key].append(feature)
                 if key not in geo_files:
-                    geo_files[key] = (OUT / f'{key}.geo.ndjson').open('w')
+                    if len(geo_files)>=48:geo_files.popitem(last=False)[1].close()
+                    geo_files[key] = (OUT / f'{key}.geo.ndjson').open('a')
+                geo_files.move_to_end(key)
                 # An object ID can recur in several versions of a plan. The
                 # document ID + object ID pair is unique in the PDOK extract.
                 geo_files[key].write(json.dumps([feature['plan'] + '|' + feature['id'], geometry], separators=(',', ':')) + '\n')
             element.clear()
             root.clear()
             if seen % 100000 == 0:
-                print(f'{seen:,} nationwide features; {sum(map(len, tiles.values())):,} in Limburg', flush=True)
+                print(f'{seen:,} nationwide features; {sum(map(len, tiles.values())):,} in Netherlands', flush=True)
     for handle in geo_files.values():
         handle.close()
     manifest = {'source': SOURCE, 'sourcePage': 'https://www.pdok.nl/atom-downloadservices/-/article/ruimtelijke-plannen',
                 'sourceUpdated': source_updated,
                 'retrieved': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                 'featureCount': sum(map(len, tiles.values())), 'tileDegrees': TILE_DEGREES,
+                'coverage': 'European Netherlands', 'compressedTiles': True,
                 'tiles': {key: len(features) for key, features in sorted(tiles.items())}}
     overview = []
     for key, features in tiles.items():
-        (OUT / f'{key}.idx.json').write_text(json.dumps(features, ensure_ascii=False, separators=(',', ':')))
+        with gzip.open(OUT / f'{key}.idx.json.gz', 'wt', encoding='utf-8', compresslevel=6) as target:
+            json.dump(features,target,ensure_ascii=False,separators=(',',':'))
         # Large province searches need a small, spatially distributed preview.
         # The complete index and geometry remain available in the individual tiles.
         cells = {}
@@ -189,7 +184,7 @@ def main():
                 cells[cell] = feature
         overview.extend({**feature, 'tile': key} for feature in cells.values())
         ndjson = OUT / f'{key}.geo.ndjson'
-        with ndjson.open() as source, (OUT / f'{key}.geo.json').open('w') as target:
+        with ndjson.open() as source, gzip.open(OUT / f'{key}.geo.json.gz', 'wt', encoding='utf-8', compresslevel=6) as target:
             target.write('[')
             for i, line in enumerate(source):
                 if i:
@@ -197,10 +192,17 @@ def main():
                 target.write(line.strip())
             target.write(']')
         ndjson.unlink()
-    (OUT / 'overview.json').write_text(json.dumps(overview, ensure_ascii=False, separators=(',', ':')))
+    with gzip.open(OUT / 'overview.json.gz','wt',encoding='utf-8',compresslevel=6) as target:
+        json.dump(overview,target,ensure_ascii=False,separators=(',',':'))
     manifest['overviewCount'] = len(overview)
     (OUT / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, separators=(',', ':')))
-    print(f"Wrote {manifest['featureCount']:,} Limburg bouwvlakken in {len(tiles)} tiles to {OUT}", flush=True)
+    if not os.environ.get('PLANVIEW_INDEX_OUT'):
+        current=ROOT/'data'/'bouwvlakken'; backup=ROOT/'data'/'bouwvlakken-previous'
+        if backup.exists():shutil.rmtree(backup)
+        if current.exists():current.rename(backup)
+        OUT.rename(current)
+        if backup.exists():shutil.rmtree(backup)
+    print(f"Wrote {manifest['featureCount']:,} Netherlands bouwvlakken in {len(tiles)} tiles to {OUT}", flush=True)
 
 
 if __name__ == '__main__':

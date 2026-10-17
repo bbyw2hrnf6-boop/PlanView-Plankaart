@@ -14,7 +14,9 @@
     'camping, kampeerterrein':'Campsite',caravanpark:'Caravan park',bungalowpark:'Holiday park'};
   const colors={urban_area:'#8766cc',nature_network:'#369769',groundwater_protection:'#48a9d4',
     'camping, kampeerterrein':'#ea9e44',caravanpark:'#dc7359',bungalowpark:'#aa80db'};
-  const attribution={provincial:'© Provincie Limburg',camping:'© PDOK / Kadaster TOP10NL',projects:'© Gemeente Maastricht'};
+  const attribution={provincial:'© Provincies / PDOK NNN · RIVM · Provincie Limburg',camping:'© PDOK / Kadaster TOP10NL',projects:'© Nationale Woningbouwkaart / LMVW'};
+  const nationalProtection=[{id:'nature',url:'https://service.pdok.nl/provincies/natuurnetwerk-nederland/wms/v1_0',layers:'PS.ProtectedSite'},{id:'groundwater',url:'https://data.rivm.nl/geo/alo/wms',layers:'rivm_gwb_actueel'}];
+  let protectionTiles=null;
   const empty={type:'FeatureCollection',features:[]};
   const context={data:cache,load};
   window.planviewContext=context;
@@ -39,31 +41,37 @@
   function visibleFeatures(id,data){
     const map=state.perspective&&state.perspectiveReady?state.perspectiveMap:state.map;
     const b=map.getBounds(),zoom=map.getZoom();
-    return data.features.filter(feature=>intersects(feature._bounds,b)&&
-      !(id==='provincial'&&zoom<11&&feature.properties.kind!=='urban_area'));
+    if(id==='camping'&&zoom<10)return [];
+    const features=data.features.filter(feature=>intersects(feature._bounds,b)&&!(id==='provincial'&&zoom<11));
+    if(id!=='projects'||zoom>=12)return features;
+    // Group public project points spatially at regional scale; never draw thousands of DOM layers.
+    const cell=360/2**(Math.floor(zoom)+1),groups=new Map();
+    for(const feature of features){const [x,y]=feature.geometry.coordinates,key=`${Math.floor(x/cell)}:${Math.floor(y/cell)}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(feature);}
+    return [...groups.values()].map(group=>group.length===1?group[0]:{...group[0],properties:{...group[0].properties,name:`${group.length} public housing projects`,cluster:group.length},geometry:{type:'Point',coordinates:[group.reduce((n,f)=>n+f.geometry.coordinates[0],0)/group.length,group.reduce((n,f)=>n+f.geometry.coordinates[1],0)/group.length]}});
   }
+
   function style(feature){const kind=feature.properties.kind,color=colors[kind]||'#f6b75e';return {color,weight:kind==='nature_network'?1.2:2,
     fillColor:color,fillOpacity:kind==='urban_area'?.10:kind==='nature_network'?.12:.20,dashArray:kind==='groundwater_protection'?'5 5':null};}
   function card(id,feature){
     const p=feature.properties,type=labels[p.kind]||p.kind||'Mapped area';
-    const rows=[p.phase,p.homes!=null?`${p.homes} planned homes`:null,p.studentRooms!=null?`${p.studentRooms} student rooms`:null,
+    const rows=[p.phase,p.province,p.peilmoment?`Snapshot: ${p.peilmoment}`:null,p.homes!=null?`${p.homes} planned homes`:null,p.studentRooms!=null?`${p.studentRooms} student rooms`:null,
       p.locationAccuracy,p.sourceDate?`Source geometry date: ${p.sourceDate}`:null].filter(Boolean);
     const note=id==='camping'?'Mapped site, not permission for accommodation. Check the local plan rules.':
-      id==='provincial'?'Province-level context. Confirm current legal effect in Omgevingsloket.':
-      id==='projects'?'Published project; marker location is approximate. Project plans may change.':'Indicative development area; check municipal source.';
+      id==='provincial'?'Nationwide NNN nature network and groundwater protection (RIVM). The additional urban planning boundary is available only for Limburg. Confirm current legal effect in Omgevingsloket.':
+      id==='projects'?'Public LMVW inventory; locations and capacities are indicative, and publication is incomplete. No public project points are available for Fryslân, Gelderland or Noord-Brabant in this snapshot. Project plans may change.':'Indicative development area; check municipal source.';
     const source=p.sourceUrl&&/^https:\/\//.test(p.sourceUrl)?`<a href="${esc(p.sourceUrl)}" target="_blank" rel="noopener noreferrer">Official source ↗</a>`:'';
-    return `<div class="pv-context-popup"><strong>${esc(p.name||type)}</strong><small>${esc(type)} · ${esc(p.municipality||p.source||'Limburg')}</small>${rows.map(row=>`<span>${esc(row)}</span>`).join('')}<p>${esc(note)}</p>${source}<br><a href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">Check current rules ↗</a></div>`;
+    return `<div class="pv-context-popup"><strong>${esc(p.name||type)}</strong><small>${esc(type)} · ${esc(p.municipality||p.source||'Nederland')}</small>${rows.map(row=>`<span>${esc(row)}</span>`).join('')}<p>${esc(note)}</p>${source}<br><a href="${OFFICIAL}" target="_blank" rel="noopener noreferrer">Check current rules ↗</a></div>`;
   }
   function drawLeaflet(id,data){
     let layer=leaflet.get(id);if(!layer){layer=L.layerGroup();leaflet.set(id,layer);}
     const features=visibleFeatures(id,data);
-    if(sameFeatures(drawn.get(id),features)){if(features.length&&!state.map.hasLayer(layer))layer.addTo(state.map);showState(id,features.length?'visible':'empty');return;}
+    if(sameFeatures(drawn.get(id),features)){if(features.length&&!state.map.hasLayer(layer))layer.addTo(state.map);showState(id,features.length||id==='provincial'?'visible':'empty');return;}
     drawn.set(id,features);layer.clearLayers();
-    if(!features.length){showState(id,'empty');return;}
+    if(!features.length){showState(id,id==='provincial'?'visible':'empty');return;}
     for(const feature of features){
       const geo=L.geoJSON(feature,{style,pointToLayer:(_,latlng)=>L.circleMarker(latlng,{radius:8,color:'#fff',weight:2,fillColor:'#d48157',fillOpacity:.95})});
       geo.bindPopup(card(id,feature),{maxWidth:285});
-      geo.on('click',event=>{L.DomEvent.stopPropagation(event.originalEvent);if(event.latlng)selectPoint(event.latlng);});
+      geo.on('click',event=>{L.DomEvent.stopPropagation(event.originalEvent);if(feature.properties.cluster){navigateToPoint(event.latlng,state.map.getZoom()+2);return;}if(event.latlng)selectPoint(event.latlng);});
       geo.addTo(layer);
     }
     if(!state.map.hasLayer(layer))layer.addTo(state.map);
@@ -74,7 +82,9 @@
     if(!label)return;
     const lang=document.documentElement.lang;
     const localized={empty:['No verified data in view','Geen geverifieerde data in beeld','Keine geprüften Daten im Ausschnitt'],loading:['Loading…','Laden…','Lädt…'],error:['Source unavailable','Bron niet beschikbaar','Quelle nicht verfügbar'],visible:['Visible','Zichtbaar','Sichtbar'],off:['Off','Uit','Aus']};
-    const text=localized[status][lang==='nl'?1:lang==='de'?2:0];
+    let text=localized[status][lang==='nl'?1:lang==='de'?2:0];
+    if(status==='empty'&&id==='camping'&&(state.perspective?state.perspectiveMap:state.map).getZoom()<10)text=lang==='de'?'Ab Zoom 10':lang==='nl'?'Vanaf zoom 10':'Zoom to level 10';
+    if(status==='empty'&&id==='projects')text=lang==='de'?'Keine öffentlichen Projektpunkte im Ausschnitt':lang==='nl'?'Geen openbare projectpunten in beeld':'No public project locations in view';
     if(label.textContent!==text)label.textContent=text;label.dataset.state=status==='empty'?'zoom':status;
   }
   function updateAttribution(id,on){const value=attribution[id];if(!value||!state.map?.attributionControl)return;
@@ -82,6 +92,9 @@
     if(!on&&context[`attribution_${id}`]){state.map.attributionControl.removeAttribution(value);context[`attribution_${id}`]=false;}}
   function refresh(){
     if(!state.map)return;
+    const enabled=entries.find(e=>e.id==='provincial').on;
+    if(enabled&&!protectionTiles){protectionTiles=L.layerGroup(nationalProtection.map(source=>L.tileLayer.wms(source.url,{layers:source.layers,format:'image/png',transparent:true,opacity:.55,version:'1.1.1',updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2})));}
+    if(protectionTiles){if(enabled&&!state.map.hasLayer(protectionTiles))protectionTiles.addTo(state.map);if(!enabled&&state.map.hasLayer(protectionTiles))state.map.removeLayer(protectionTiles);}
     for(const entry of entries){
       const layer=leaflet.get(entry.id);
       if(!entry.on){if(layer&&state.map.hasLayer(layer))state.map.removeLayer(layer);updateAttribution(entry.id,false);showState(entry.id,'off');continue;}
@@ -94,10 +107,11 @@
   function updatePerspective(){
     if(!state.perspectiveReady||!state.perspective)return;
     const map=state.perspectiveMap;
+    for(const source of nationalProtection){const id=`national-protection-${source.id}`;if(!map.getSource(id)){const tiles=`${source.url}?service=WMS&version=1.1.1&request=GetMap&layers=${encodeURIComponent(source.layers)}&styles=&format=image/png&transparent=true&srs=EPSG:3857&width=256&height=256&bbox={bbox-epsg-3857}`;map.addSource(id,{type:'raster',tiles:[tiles],tileSize:256,attribution:source.id==='nature'?'© Provincies / PDOK NNN':'© RIVM'});map.addLayer({id,type:'raster',source:id,paint:{'raster-opacity':.5,'raster-fade-duration':0}},map.getLayer('municipality-lines')?'municipality-lines':undefined);}map.setLayoutProperty(id,'visibility',entries.find(e=>e.id==='provincial').on?'visible':'none');}
     for(const entry of entries){
       const sourceId=`context-${entry.id}`;
       if(!map.getSource(sourceId)){
-        map.addSource(sourceId,{type:'geojson',data:empty});
+        map.addSource(sourceId,{type:'geojson',data:empty,attribution:attribution[entry.id]});
         if(entry.id==='projects')map.addLayer({id:`${sourceId}-points`,type:'circle',source:sourceId,
           paint:{'circle-radius':8,'circle-color':'#d48157','circle-stroke-width':2,'circle-stroke-color':'#fff'}});
         else{
@@ -119,7 +133,8 @@
   window.addEventListener('load',()=>{
     state.map.on('movestart',()=>clearTimeout(context.refreshTimer));
     state.map.on('moveend',()=>{if(!state.perspective)scheduleRefresh();});
-    document.getElementById('municipality').addEventListener('change',()=>setTimeout(refresh,150));
+    document.addEventListener('planview:regionchange',scheduleRefresh);
+    window.addEventListener('planview-language-change',scheduleRefresh);
     refresh();
   });
 })();

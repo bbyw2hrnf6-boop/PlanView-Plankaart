@@ -43,7 +43,7 @@ export function cleanInput(payload) {
   if (!c || typeof c !== 'object' || Array.isArray(c) || JSON.stringify(c).length > 3200) throw new ApiError(400, 'invalid_context');
   const counts = c.nearbyFeatureCounts && typeof c.nearbyFeatureCounts === 'object' ? c.nearbyFeatureCounts : {};
   return { query: payload.query.trim(), context: {
-    scope: String(c.scope || 'Limburg').slice(0, 100), interfaceLanguage: ['en', 'nl', 'de'].includes(c.interfaceLanguage) ? c.interfaceLanguage : 'en',
+    scope: String(c.scope || 'Nederland').slice(0, 100), interfaceLanguage: ['en', 'nl', 'de'].includes(c.interfaceLanguage) ? c.interfaceLanguage : 'en',
     sampledPlanFeatures: (Array.isArray(c.sampledPlanFeatures) ? c.sampledPlanFeatures : []).slice(0, 8).filter(x => x && typeof x === 'object').map(x => ({ designation: String(x.designation || '').slice(0, 100), group: String(x.group || '').slice(0, 40) })),
     nearbyFeatureCounts: Object.fromEntries(Object.entries(counts).filter(([k,v]) => ['camping','towns','industry','roads','station','park','sports','cemetery','swimming_pool','marina'].includes(k) && Number.isFinite(v)).map(([k,v]) => [k, Math.max(0, Math.min(3000, Math.trunc(v)))])),
     nearbyExamples: (Array.isArray(c.nearbyExamples) ? c.nearbyExamples : []).filter(x => typeof x === 'string').slice(0, 6).map(x => x.slice(0, 80))

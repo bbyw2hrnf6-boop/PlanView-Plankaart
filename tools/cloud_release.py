@@ -11,12 +11,12 @@ def write_json(path,value):
     temp=path.with_suffix(path.suffix+'.tmp');temp.write_text(json.dumps(value,indent=2)+'\n');temp.replace(path)
 
 def assets():
-    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'limburg.json','search_filters.schema.json','search_config.json','.nojekyll'}]
+    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'netherlands.json','search_filters.schema.json','search_config.json','.nojekyll'}]
     files=root_files+[p for folder in ['data','legend','vendor'] for p in (ROOT/folder).rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT).parts)]
     files += [p for p in (ROOT/'cloud').rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT/'cloud').parts)]
     for p in files:
         if p.is_symlink():raise ValueError('Refusing symlink: '+str(p))
-        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt','.ts','.tsx','.sql'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
+        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt','.ts','.tsx','.sql','.gz'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
     return sorted(files,key=lambda p:p.relative_to(ROOT).as_posix())
 
 def fingerprint(files):
@@ -35,6 +35,9 @@ def validate(files):
     for p in files:
         if p.parent==ROOT and p.suffix=='.js':subprocess.run(['node','--check',str(p)],check=True,capture_output=True)
         if p.suffix in {'.json','.geojson'}:json.loads(p.read_text())
+        if p.name.endswith('.json.gz'):
+            import gzip
+            with gzip.open(p,'rt',encoding='utf-8') as source:json.load(source)
     for ref in re.findall(r'(?:src|href)=["\'](\./[^"\']+)["\']',(ROOT/'index.html').read_text()):
         target=ROOT/ref.split('?',1)[0]
         if not target.is_file():raise ValueError('Missing page asset: '+ref)

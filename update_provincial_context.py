@@ -13,8 +13,6 @@ ROOT = Path(__file__).resolve().parent
 WFS = 'https://portal.prvlimburg.nl/geodata/PROVINCIALE_BELEIDSPLANNEN/wfs'
 KINDS = {
     'VERORD_STEDELIJK_GEBIED_V': 'urban_area',
-    'VERORD_NATUURNETWERK_V': 'nature_network',
-    'VERORD_GRONDWATERBESCHERM_V': 'groundwater_protection',
 }
 
 
@@ -51,6 +49,7 @@ def main():
         print(source, len(records), flush=True)
     out = {'type': 'FeatureCollection', 'metadata': {'source': 'Provincie Limburg WFS',
             'retrieved': dt.datetime.now(dt.timezone.utc).isoformat(),
+            'scope': 'Limburg urban-area supplement only; national NNN and groundwater use live WMS',
             'legalNote': 'Context only; current legal effect must be checked in Omgevingsloket.',
             'sourceUrl': WFS + '?service=WFS&request=GetCapabilities'}, 'features': features}
     path = ROOT / 'data' / 'provincial_context.geojson'

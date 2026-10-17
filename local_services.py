@@ -106,8 +106,8 @@ def dso_point(x, y):
     key = credentials().get('dso')
     if not key:
         raise PermissionError('DSO production key not configured')
-    if not (130000 <= x <= 240000 and 280000 <= y <= 440000):
-        raise ValueError('Point outside Limburg search range')
+    if not (-10000 <= x <= 310000 and 300000 <= y <= 640000):
+        raise ValueError('Point outside Netherlands search range')
     body = {'geometrie': {'type': 'Point', 'coordinates': [round(x, 3), round(y, 3)]}}
     result = fetch_json(f'{DSO_BASE}/regelingen/_zoek?_expand=true&locatieSelectie=primair&size=100',
                         key, payload=body, crs=True,
@@ -224,8 +224,8 @@ def dso_rules_point(x, y):
     key = credentials().get('dso')
     if not key:
         raise PermissionError('DSO production key not configured')
-    if not (130000 <= x <= 240000 and 280000 <= y <= 440000):
-        raise ValueError('Point outside Limburg search range')
+    if not (-10000 <= x <= 310000 and 300000 <= y <= 640000):
+        raise ValueError('Point outside Netherlands search range')
     cache_key = (round(x, 1), round(y, 1))
     hit = _rules_cache.get(cache_key)
     if hit and time.monotonic() - hit[0] < _RULES_TTL:

@@ -1,4 +1,4 @@
-"""Refresh compact TOP10NL surroundings for Limburg advanced search.
+"""Refresh compact TOP10NL surroundings for Netherlands advanced search.
 
 Run from the project root: python3 update_context.py
 Only public PDOK OGC Features are downloaded. The output is research context,
@@ -8,11 +8,12 @@ import datetime as dt
 import json
 import urllib.request
 import urllib.parse
+import concurrent.futures
 from pathlib import Path
 
 ROOT = 'https://api.pdok.nl/kadaster/brt-top10nl/ogc/v1/collections'
-BBOX = '5.45,50.70,6.30,51.85'  # Limburg plus nearby Dutch context
-OUT = Path(__file__).resolve().parent / 'data' / 'limburg_context.json'
+BBOX = '3.1,50.7,7.3,53.7'  # European Netherlands
+OUT = Path(__file__).resolve().parent / 'data' / 'netherlands_context.json'
 NEARBY_TYPES = {
     'park': {'park'},
     'sports': {'sportterrein, sportcomplex', 'tennispark'},
@@ -54,60 +55,37 @@ def point(geometry):
 
 
 def main():
-    items = {'camping': [], 'towns': [], 'industry': [],
-             'features': {name: [] for name in ('station', *NEARBY_TYPES)}}
-    seen = set()
-    for collection in ('functioneel_gebied_vlak', 'functioneel_gebied_multivlak', 'plaats_vlak', 'plaats_multivlak'):
-        for feature in pages(collection):
-            props = feature.get('properties') or {}
-            kind = props.get('typefunctioneelgebied')
-            if kind == 'camping, kampeerterrein':
-                group = 'camping'
-            elif kind == 'bedrijventerrein':
-                group = 'industry'
-            elif kind and (match := next((name for name, types in NEARBY_TYPES.items() if kind in types), None)):
-                group = match
-            elif collection.startswith('plaats_') and props.get('typegebied') in ('woonkern', 'stadskern', 'hoofdkern', 'deelkern'):
-                group = 'towns'
-            else:
-                continue
-            ident = f"{collection}/{props.get('lokaal_id', feature.get('id'))}"
-            if ident in seen:
-                continue
-            seen.add(ident)
-            location = point(feature['geometry'])
-            if not location:
-                continue
-            target = items['features'][group] if group in NEARBY_TYPES else items[group]
-            target.append({'id': ident, 'name': props.get('naamnl') or props.get('naamofficieel') or '', **location,
-                           'type': kind or props.get('typegebied'), 'source': 'PDOK TOP10NL'})
-    query = urllib.parse.urlencode({'service': 'WFS', 'version': '2.0.0', 'request': 'GetFeature',
-                                    'typeNames': 'spoorwegen:station', 'outputFormat': 'application/json',
-                                    'srsName': 'EPSG:4326', 'count': '1000'})
-    station_url = 'https://service.pdok.nl/prorail/spoorwegen/wfs/v1_0?' + query
-    with urllib.request.urlopen(station_url, timeout=30) as response:
-        stations = json.load(response)['features']
-    if len(stations) >= 1000:
-        raise RuntimeError('Station result limit reached; refusing incomplete cache')
-    west, south, east, north = map(float, BBOX.split(','))
-    for feature in stations:
-        geometry = feature.get('geometry') or {}
-        if geometry.get('type') != 'Point':
-            continue
-        lng, lat = geometry['coordinates'][:2]
-        if not (west <= lng <= east and south <= lat <= north):
-            continue
-        props = feature.get('properties') or {}
-        items['features']['station'].append({'id': str(feature.get('id') or props.get('objectid')),
-            'name': props.get('naam') or '', 'point': {'lat': round(lat, 6), 'lng': round(lng, 6)},
-            'extent': [round(lng, 6), round(lat, 6), round(lng, 6), round(lat, 6)],
-            'type': 'railway station', 'source': 'PDOK ProRail Spoorwegen'})
-    payload = {'source': 'PDOK TOP10NL', 'retrieved': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'), 'bbox': BBOX, **items}
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
-    print(f'Wrote {OUT}: ' + ', '.join(f'{k}={len(v)}' for k, v in items.items() if isinstance(v, list)) +
-          ', ' + ', '.join(f'{k}={len(v)}' for k, v in items['features'].items()), flush=True)
+    TYPES={'camping, kampeerterrein','caravanpark','bungalowpark'}
+    items={'camping':[],'towns':[],'industry':[],'features':{name:[] for name in ('station',*NEARBY_TYPES)}}
+    camping=[];seen=set()
+    def consume(collection):
+        return collection,list(pages(collection))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+     for collection,features in pool.map(consume,('functioneel_gebied_vlak','functioneel_gebied_multivlak','plaats_vlak','plaats_multivlak')):
+      for f in features:
+       p=f.get('properties') or {};kind=p.get('typefunctioneelgebied')
+       group='camping' if kind in TYPES else 'industry' if kind=='bedrijventerrein' else next((name for name,types in NEARBY_TYPES.items() if kind in types),None) if kind else 'towns' if collection.startswith('plaats_') and p.get('typegebied') in ('woonkern','stadskern','hoofdkern','deelkern') else None
+       if not group:continue
+       ident=f"{collection}/{p.get('lokaal_id',f.get('id'))}"
+       if ident in seen:continue
+       seen.add(ident);location=point(f['geometry'])
+       if not location:continue
+       name=p.get('naamnl') or p.get('naamofficieel') or ''
+       target=items['features'][group] if group in NEARBY_TYPES else items[group]
+       target.append({'id':ident,'name':name,**location,'type':kind or p.get('typegebied'),'source':'PDOK TOP10NL'})
+       if group=='camping':camping.append({'type':'Feature','id':ident,'properties':{'id':ident,'name':name,'kind':kind,'source':'PDOK TOP10NL','sourceUrl':f'{ROOT}/{collection}/items/{f["id"]}?f=html','sourceDate':p.get('bronactualiteit')},'geometry':f['geometry']})
+    query=urllib.parse.urlencode({'service':'WFS','version':'2.0.0','request':'GetFeature','typeNames':'spoorwegen:station','outputFormat':'application/json','srsName':'EPSG:4326','count':1000})
+    with urllib.request.urlopen('https://service.pdok.nl/prorail/spoorwegen/wfs/v1_0?'+query,timeout=60) as r:stations=json.load(r)['features']
+    assert len(stations)<1000
+    for f in stations:
+     g=f.get('geometry') or {}
+     if g.get('type')!='Point':continue
+     lng,lat=g['coordinates'][:2];p=f.get('properties') or {}
+     items['features']['station'].append({'id':str(f.get('id') or p.get('objectid')),'name':p.get('naam') or '', 'point':{'lat':round(lat,6),'lng':round(lng,6)},'extent':[lng,lat,lng,lat],'type':'railway station','source':'PDOK ProRail Spoorwegen'})
+    metadata={'source':'PDOK TOP10NL + ProRail','retrieved':dt.datetime.now(dt.timezone.utc).isoformat(),'bbox':BBOX,'coverage':'European Netherlands'}
+    OUT.write_text(json.dumps({**metadata,**items},ensure_ascii=False,separators=(',',':')))
+    (OUT.parent/'camping_sites.geojson').write_text(json.dumps({'type':'FeatureCollection','metadata':metadata,'features':camping},ensure_ascii=False,separators=(',',':')))
+    print('Completed national context',len(camping),'campsites',len(stations),'stations',flush=True)
 
-
-if __name__ == '__main__':
+if __name__=='__main__':
     main()

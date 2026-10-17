@@ -299,7 +299,7 @@ class Handler(SimpleHTTPRequestHandler):
             counts = counts if isinstance(counts, dict) else {}
             examples = examples if isinstance(examples, list) else []
             context = {
-                'scope': str(context.get('scope', 'Limburg'))[:100],
+                'scope': str(context.get('scope', 'Nederland'))[:100],
                 'interfaceLanguage': context.get('interfaceLanguage') if context.get('interfaceLanguage') in ('en', 'nl', 'de') else 'en',
                 'sampledPlanFeatures': [
                     {'designation': str(item.get('designation', ''))[:100],

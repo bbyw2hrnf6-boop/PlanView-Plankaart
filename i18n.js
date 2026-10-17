@@ -120,11 +120,13 @@
       for(const root of roots)if(root.isConnected&&!roots.some(other=>other!==root&&other.contains(root)))translate(root);
     });
   }
+  Object.assign(translations.nl,{'PROVINCE':'PROVINCIE','municipalities':'gemeenten','Nederland · 12 provinces':'Nederland · 12 provincies','Netherlands plan overview':'Overzicht plannen Nederland','Official plan geometry across all 12 provinces.':'Officiële plangeometrie in alle 12 provincies.','Fit selected region':'Hele gekozen regio','Current map view':'Huidig kaartbeeld','Selected province':'Gekozen provincie','All Netherlands · 12 provinces':'Heel Nederland · 12 provincies','Explore the Netherlands plankaart':'Verken de plankaart van Nederland','Choose a province or municipality, search an address or parcel, or click a plan area. Zoom in for building footprints, parcel lines and the exact planning geometry.':'Kies een provincie of gemeente, zoek een adres of perceel of klik op een plangebied. Zoom in voor gebouwen, perceelgrenzen en exacte plangeometrie.'});
+  Object.assign(translations.de,{'PROVINCE':'PROVINZ','municipalities':'Gemeinden','Nederland · 12 provinces':'Niederlande · 12 Provinzen','Netherlands plan overview':'Planübersicht Niederlande','Official plan geometry across all 12 provinces.':'Offizielle Plangeometrien in allen 12 Provinzen.','Fit selected region':'Gewählte Region einpassen','Current map view':'Aktueller Kartenausschnitt','Selected province':'Gewählte Provinz','All Netherlands · 12 provinces':'Ganze Niederlande · 12 Provinzen','Explore the Netherlands plankaart':'Plankarte der Niederlande erkunden','Choose a province or municipality, search an address or parcel, or click a plan area. Zoom in for building footprints, parcel lines and the exact planning geometry.':'Provinz oder Gemeinde wählen, Adresse oder Flurstück suchen oder ein Plangebiet anklicken. Hineinzoomen für Gebäude, Flurstücksgrenzen und genaue Plangeometrie.'});
   function translate(root=document.body){
     if(observer)observer.disconnect();
     if(root===document.body){
     document.documentElement.lang=language;
-    document.title=language==='nl'?'PlanView — ruimtelijke plannen Limburg':language==='de'?'PlanView — Raumplanung Limburg':'PlanView — Limburg spatial plans';
+    document.title=language==='nl'?'PlanView — ruimtelijke plannen Nederland':language==='de'?'PlanView — Raumplanung Niederlande':'PlanView — Netherlands spatial plans';
     document.getElementById('language')?.setAttribute('aria-label',language==='nl'?'Taal':language==='de'?'Sprache':'Language');
     const advancedQuery=document.getElementById('advanced-query');if(advancedQuery)advancedQuery.placeholder=language==='nl'?'Voorbeeld: onbebouwde woonlocaties met bouwvlak en onherroepelijk plan':language==='de'?'Beispiel: unbebaute Wohnflächen mit Baufenster und rechtskräftigem Plan':'Example: Unbuilt residential land with a building envelope and a final plan';
     const search=document.getElementById('search');if(search){search.placeholder=translations[language]?.['Search address, place or parcel']||'Search address, place or parcel';search.setAttribute('aria-label',search.placeholder);}
@@ -135,6 +137,7 @@
       const original=originals.get(node)??node.textContent;originals.set(node,original);
       const trimmed=original.trim();if(!trimmed)continue;
       let translated=translations[language]?.[trimmed];
+      if(!translated){const region=/^(.*?) · (\d+) municipalities$/.exec(trimmed);if(region)translated=language==='nl'?`${region[1]} · ${region[2]} gemeenten`:language==='de'?`${region[1]} · ${region[2]} Gemeinden`:trimmed;}
       if(!translated){const count=/^(\d+) active$/.exec(trimmed);if(count)translated=language==='nl'?`${count[1]} actief`:language==='de'?`${count[1]} aktiv`:trimmed;}
       if(!translated){const saved=/^(\d+) areas?$/.exec(trimmed);if(saved)translated=language==='nl'?`${saved[1]} ${saved[1]==='1'?'gebied':'gebieden'}`:language==='de'?`${saved[1]} ${saved[1]==='1'?'Gebiet':'Gebiete'}`:trimmed;}
       if(!translated){const scan=/^Scanning (\d+) sample locations on the visible map…$/.exec(trimmed);if(scan)translated=language==='nl'?`De zichtbare kaart op ${scan[1]} punten doorzoeken…`:language==='de'?`Sichtbare Karte an ${scan[1]} Punkten prüfen…`:trimmed;}
