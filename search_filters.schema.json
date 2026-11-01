@@ -65,10 +65,13 @@
           "sports",
           "cemetery",
           "swimming_pool",
-          "marina"
+          "marina",
+          "hospital",
+          "allotments",
+          "recreation_area"
         ]
       },
-      "description": "Nearby mapped place types requested: railway station, park, sports field/complex, cemetery, public swimming-pool complex, or marina. Checked against official ProRail and TOP10NL feature locations."
+      "description": "Nearby mapped place types requested: railway station, park, sports field/complex, cemetery, public swimming-pool complex, or marina. Checked against official ProRail and TOP10NL feature locations. Also supported: hospital grounds, allotment-garden areas, and recreation areas from TOP10NL; these are mapped land-use geometries, not claims about available services or public access."
     },
     "avoidIndustry": {
       "type": "boolean",
@@ -76,7 +79,7 @@
     },
     "preferQuiet": {
       "type": "boolean",
-      "description": "True for a quiet/silent preference. No sound-level dataset is connected, so results with this preference are review leads only."
+      "description": "True for a qualitative quiet/silent preference without a numeric threshold. Such a subjective preference remains unverified; explicit modeled total-noise maxima use environmentCriteria.maxNoiseDb."
     },
     "potentialBuildingLand": {
       "type": "boolean",
@@ -346,6 +349,84 @@
             "minKm",
             "maxKm"
           ]
+        },
+        "hospital": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "allotments": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
+        },
+        "recreation_area": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            },
+            "maxKm": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "minKm",
+            "maxKm"
+          ]
         }
       },
       "required": [
@@ -357,9 +438,183 @@
         "cemetery",
         "swimming_pool",
         "marina",
-        "industry"
+        "industry",
+        "hospital",
+        "allotments",
+        "recreation_area"
       ],
-      "description": "Explicit straight-line distance constraints in kilometres. Convert metres to km. minKm means at least; maxKm means at most. Both for a range. Null/null when user gives no numeric constraint. All keys required."
+      "description": "Explicit straight-line distance constraints in kilometres. Convert metres to km. minKm means at least; maxKm means at most. Both for a range. Null/null when user gives no numeric constraint. All twelve feature keys required."
+    },
+    "siteCriteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcelMinAreaM2": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Minimum measured area of the whole cadastral parcel in square metres; null when unspecified. Convert hectare to 10000 m²."
+        },
+        "parcelMaxAreaM2": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Maximum measured area of the whole cadastral parcel in square metres; null when unspecified."
+        },
+        "minEnvelopeAreaM2": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Minimum measured area of the parcel overlapping mapped bouwvlak polygons, in m². This is geometry, not permitted floor area or a building right."
+        },
+        "minEnvelopePercent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum percentage of the whole parcel intersecting mapped bouwvlak polygons."
+        },
+        "maxBuildingCoveragePercent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Maximum percentage of the whole parcel currently covered by mapped BAG building footprints. Not the plan-permitted bebouwingspercentage."
+        },
+        "excludeNatura2000": {
+          "type": "boolean",
+          "description": "True to exclude parcels intersecting Natura 2000 protected-area polygons. This is a spatial screening check, not an environmental permit decision."
+        },
+        "minNaturaDistanceKm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Minimum straight-line distance in km from the whole parcel to Natura 2000 boundaries. Null when unspecified. Zero by itself permits boundary contact; use excludeNatura2000 for an explicit outside/exclusion request."
+        }
+      },
+      "required": [
+        "parcelMinAreaM2",
+        "parcelMaxAreaM2",
+        "minEnvelopeAreaM2",
+        "minEnvelopePercent",
+        "maxBuildingCoveragePercent",
+        "excludeNatura2000",
+        "minNaturaDistanceKm"
+      ],
+      "description": "Parcel-level thresholds, all combined with AND. Every field required; nullable numbers for inactive thresholds. Failed or incomplete dataset coverage cannot establish a match."
+    },
+    "excludeGroups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "wonen",
+          "woongebied",
+          "gemengd",
+          "bedrijf",
+          "bedrijventerrein",
+          "centrum",
+          "groen",
+          "natuur",
+          "water",
+          "verkeer",
+          "maatschappelijk",
+          "agrarisch",
+          "bos",
+          "kantoor",
+          "detailhandel",
+          "horeca",
+          "recreatie"
+        ]
+      },
+      "description": "Primary zoning categories explicitly excluded by the user. Exclusions apply even when positive groups is empty. Nearby-industry avoidance remains avoidIndustry/distanceRules, not a zoning exclusion."
+    },
+    "excludeStatuses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "vastgesteld",
+          "onherroepelijk"
+        ]
+      },
+      "description": "Plan statuses explicitly excluded by the user. Keep distinct from required statuses."
+    },
+    "environmentCriteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxNoiseDb": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 140,
+          "description": "Maximum modeled combined annual-average noise exposure Lden in dB at the sampled location, as documented in the RIVM source data. Explicit total-Lden maxima are supported. Not Lnight, Lmax, facade-specific or indoor sound, an acoustic measurement or proof of legal noise compliance. Null if not requested."
+        },
+        "maxSlopeDeg": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 90,
+          "description": "Maximum terrain slope angle in degrees from the AHN 0.5m terrain model over the parcel when geometry is available, otherwise explicitly limited to the point surroundings. Convert requested slope percent p to atan(p/100)*180/pi degrees; never treat p percent as p degrees. Not building coverage percentage."
+        },
+        "soilClasses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "peat",
+              "peaty",
+              "podzol",
+              "brik",
+              "thick_earth",
+              "sand",
+              "calcareous_silt",
+              "unripe_mineral",
+              "marine_clay",
+              "river_clay",
+              "old_river_clay",
+              "old_clay",
+              "loam",
+              "old_limburg"
+            ]
+          },
+          "description": "Acceptable BRO Soil Map main classes (OR within this array), not soil material sampled at depth. Empty means no soil class condition. Other criteria remain AND. Do not infer bearing capacity, contamination absence or groundwater from a soil class."
+        },
+        "minGroundwaterDepthCm": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Minimum depth of modeled GHG (average highest groundwater level), in centimeters below LOCAL GROUND LEVEL. Convert meters to centimeters. Positive larger depth means deeper groundwater. Not GLG, GVG, height versus NAP, a current measured water level, groundwater quality or a protection-zone condition."
+        }
+      },
+      "required": [
+        "maxNoiseDb",
+        "maxSlopeDeg",
+        "soilClasses",
+        "minGroundwaterDepthCm"
+      ],
+      "description": "Four environmental screening criteria using official modeled datasets. All fields required, numeric null or empty soilClasses means inactive. Missing data or incomplete coverage remains unverified; it never becomes a confirmed pass."
     }
   },
   "required": [
@@ -378,6 +633,10 @@
     "explanation",
     "insideCamping",
     "accommodationIntent",
-    "distanceRules"
+    "distanceRules",
+    "siteCriteria",
+    "excludeGroups",
+    "excludeStatuses",
+    "environmentCriteria"
   ]
 }

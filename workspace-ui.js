@@ -226,6 +226,12 @@
     syncMobileNav();syncMapChoices(); updateThemeSelection();
   }
 
+  function resizeWorkspaceMaps(){
+    // Keep the selected geographic center as desktop panes change width.
+    // pan:false keeps old pixel positions and can move the target out of view.
+    state.map?.invalidateSize({pan:true,animate:false});state.perspectiveMap?.resize();
+  }
+
   function improveDirectSearch() {
     const input = $('search'), list = $('search-results');
     input.setAttribute('role','combobox'); input.setAttribute('aria-autocomplete','list'); input.setAttribute('aria-controls','search-results');
@@ -239,7 +245,7 @@
       const options = [...list.querySelectorAll('[data-result]')];
       if (list.hidden || !options.length) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault(); cursor = (cursor + (e.key === 'ArrowDown' ? 1 : options.length - 1) + options.length) % options.length;
+        e.preventDefault(); cursor = cursor < 0 ? (e.key === 'ArrowDown' ? 0 : options.length - 1) : (cursor + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
         options.forEach((button, i) => button.setAttribute('aria-selected',String(i === cursor)));
         input.setAttribute('aria-activedescendant', options[cursor].id); options[cursor].scrollIntoView({block:'nearest'});
       } else if (e.key === 'Enter' && cursor >= 0) { e.preventDefault(); e.stopImmediatePropagation(); options[cursor].click(); }
@@ -252,7 +258,7 @@
     observer.observe($('detail-panel'), {attributes:true, attributeFilter:['class']});
     observer.observe($('advanced-panel'), {attributes:true, attributeFilter:['hidden']});
     observer.observe($('pv-workbench'), {attributes:true, attributeFilter:['hidden']});
-    new ResizeObserver(() => { state.map?.invalidateSize({pan:false}); state.perspectiveMap?.resize(); }).observe(document.querySelector('.map-stage'));
+    new ResizeObserver(resizeWorkspaceMaps).observe(document.querySelector('.map-stage'));
     window.addEventListener('planview-search-open', e => { if (e.detail.open) layersOpen = false; queueMicrotask(syncLayout); });
     window.addEventListener('planview-view-change', syncLayout);
     window.addEventListener('planview-language-change', translateWorkspace);

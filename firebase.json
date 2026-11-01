@@ -1,0 +1,17 @@
+{
+  "functions": [{"source":"firebase/functions","codebase":"planview","runtime":"nodejs22","ignore":["node_modules",".git","*.log",".env*","tests"],"predeploy":["python3 tools/firebase_release.py prepare"]}],
+  "hosting": {
+    "public":".firebase-build/public",
+    "ignore":["firebase.json","**/.*","**/node_modules/**"],
+    "predeploy":["python3 tools/firebase_release.py prepare"],
+    "headers":[
+      {"source":"**","headers":[{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"},{"key":"X-Frame-Options","value":"DENY"}]},
+      {"source":"/index.html","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+      {"source":"/firebase-runtime.json","headers":[{"key":"Cache-Control","value":"no-store"}]},
+      {"source":"/firebase-auth.js","headers":[{"key":"Cache-Control","value":"no-cache"}]}
+    ],
+    "rewrites":[{"source":"/api/**","function":{"functionId":"planviewApi","region":"europe-west1"}}]
+  },
+  "firestore":{"rules":"firebase/firestore.rules","indexes":"firebase/firestore.indexes.json"},
+  "emulators":{"auth":{"port":9099},"firestore":{"port":8080},"functions":{"port":5001},"hosting":{"port":5000},"singleProjectMode":true}
+}

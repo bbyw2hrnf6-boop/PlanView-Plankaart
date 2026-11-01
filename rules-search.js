@@ -3,7 +3,7 @@
   'use strict';
   const lang = () => ['nl', 'de'].includes(document.documentElement.lang) ? document.documentElement.lang : 'en';
   const tr = (en, nl, de) => ({ en, nl, de })[lang()];
-  const model = { key: '', point: null, selection: null, query: '', response: null, error: '', loading: false, request: 0, abort: null, node: null, language: '', renderedKey: '' };
+  const model = { key: '', point: null, selection: null, query: '', response: null, error: '', loading: false, request: 0, abort: null, node: null, language: '', renderedKey: '', responseQuery: '' };
   const pointKey = p => Number.isFinite(Number(p?.lat)) && Number.isFinite(Number(p?.lng)) ? `${Number(p.lat).toFixed(7)},${Number(p.lng).toFixed(7)}` : '';
   const text = value => typeof value === 'string' ? value : '';
   const el = (tag, className, content) => {
@@ -13,6 +13,39 @@
     return node;
   };
   const currentSelection = () => typeof state === 'undefined' ? null : state.selected;
+  // Translate fixed service diagnostics only. Official titles, quotations and
+  // unknown diagnostics stay verbatim so no source meaning is inferred here.
+  function diagnosticText(value) {
+    const raw=String(value??'');
+    const messages={
+      'Only the clicked point is checked; applicability across an entire parcel is not established.':['Alleen het aangeklikte punt is gecontroleerd; toepasselijkheid op het gehele perceel is niet vastgesteld.','Nur der angeklickte Punkt wird geprüft; die Geltung für das gesamte Flurstück ist nicht festgestellt.'],
+      'Legacy IMRO/TAM plan rules, individual permits, attachments and external legislation are not automatically complete in this DSO corpus.':['Oude IMRO/TAM-planregels, individuele vergunningen, bijlagen en externe wetgeving zijn niet automatisch volledig opgenomen in dit DSO-corpus.','Ältere IMRO-/TAM-Planregeln, Einzelgenehmigungen, Anlagen und externe Rechtsvorschriften sind in diesem DSO-Textbestand nicht automatisch vollständig enthalten.'],
+      'A geographically matched rule can be conditional or address a public authority; the match does not establish permission for a proposed activity.':['Een geografisch gekoppelde regel kan voorwaardelijk zijn of aan een bestuursorgaan zijn gericht; de koppeling stelt geen toestemming voor een voorgenomen activiteit vast.','Eine räumlich zugeordnete Regel kann an Bedingungen geknüpft oder an eine Behörde gerichtet sein; die Zuordnung stellt keine Erlaubnis für ein Vorhaben fest.'],
+      'Ranked excerpts; cross-references and the whole parcel are not exhaustively assessed.':['Gerangschikte tekstfragmenten; kruisverwijzingen en het gehele perceel zijn niet uitputtend beoordeeld.','Nach Relevanz ausgewählte Auszüge; Querverweise und das gesamte Flurstück sind nicht vollständig geprüft.'],
+      'An applicable annotation has no resolvable text reference.':['Een toepasselijke annotatie heeft geen oplosbare tekstverwijzing.','Eine anwendbare Annotation enthält keinen auflösbaren Textverweis.'],
+      'DSO returned no selected location identifiers; document text cannot be certified as point-filtered.':['DSO gaf geen geselecteerde locatie-identificaties terug; filtering van de documenttekst op dit punt kan niet worden bevestigd.','DSO hat keine Kennungen ausgewählter Orte geliefert; eine Filterung der Dokumenttexte auf diesen Punkt kann nicht bestätigt werden.'],
+      'A text component could not be safely parsed within the text limits.':['Een tekstonderdeel kon binnen de tekstlimieten niet veilig worden verwerkt.','Ein Textbestandteil konnte innerhalb der Textgrenzen nicht sicher verarbeitet werden.'],
+      'Internal-reference expansion reached its retrieval limit.':['Het uitwerken van interne verwijzingen heeft de ophaallimiet bereikt.','Die Auflösung interner Verweise hat die Abrufgrenze erreicht.'],
+      'Applicable annotations were returned but no current point-filtered text component could be retrieved.':['Toepasselijke annotaties zijn ontvangen, maar er kon geen actueel, op het punt gefilterd tekstonderdeel worden opgehaald.','Anwendbare Annotationen wurden geliefert, aber kein aktueller, auf den Punkt gefilterter Textbestandteil konnte abgerufen werden.'],
+      'Some rules refer to external legislation, information objects or attachments that were not retrieved.':['Sommige regels verwijzen naar externe wetgeving, informatieobjecten of bijlagen die niet zijn opgehaald.','Einige Regeln verweisen auf externe Rechtsvorschriften, Informationsobjekte oder Anlagen, die nicht abgerufen wurden.'],
+      'Official document discovery reached its pagination limit.':['Het zoeken naar officiële documenten heeft de pagineringslimiet bereikt.','Die amtliche Dokumentensuche hat ihre Seitengrenze erreicht.'],
+      'No normative DSO documents were returned; this does not establish that no rules apply.':['Er zijn geen normatieve DSO-documenten ontvangen; dit stelt niet vast dat er geen regels gelden.','Es wurden keine normativen DSO-Dokumente geliefert; daraus folgt nicht, dass keine Regeln gelten.'],
+      'Official text or annotations could not be retrieved within the retrieval limits.':['Officiële tekst of annotaties konden binnen de ophaallimieten niet worden opgehaald.','Amtlicher Text oder Annotationen konnten innerhalb der Abrufgrenzen nicht geladen werden.'],
+      'The overall 60-second source retrieval budget was reached; remaining regulations are explicitly listed as unavailable.':['De totale ophaaltijd van 60 seconden voor bronnen is bereikt; resterende regelingen staan uitdrukkelijk als niet beschikbaar vermeld.','Das gesamte Zeitbudget von 60 Sekunden für den Quellenabruf wurde erreicht; übrige Regelungen sind ausdrücklich als nicht verfügbar aufgeführt.']
+    };
+    for(const [en,[nl,de]] of Object.entries(messages)){
+      if(raw===en)return tr(en,nl,de);
+      if(raw.endsWith(': '+en))return raw.slice(0,-en.length)+tr(en,nl,de);
+    }
+    const patterns=[
+      [/^(.*?)(\d+) referenced components or broad sections were not expanded\.$/,(prefix,n)=>prefix+tr(`${n} referenced components or broad sections were not expanded.`,`${n} onderdelen of brede secties waarnaar wordt verwezen, zijn niet uitgewerkt.`,`${n} referenzierte Bestandteile oder übergreifende Abschnitte wurden nicht aufgelöst.`)],
+      [/^(.*?)(\d+) applicable regulations were omitted by the document retrieval limit\.$/,(prefix,n)=>prefix+tr(`${n} applicable regulations were omitted by the document retrieval limit.`,`${n} toepasselijke regelingen zijn door de documentophaallimiet niet opgehaald.`,`${n} anwendbare Regelungen wurden wegen der Dokumentabrufgrenze ausgelassen.`)],
+      [/^(.*?)Official request failed \((\d{3})\)\.$/,(prefix,status)=>prefix+tr(`Official request failed (${status}).`,`Officieel verzoek mislukt (${status}).`,`Amtliche Anfrage fehlgeschlagen (${status}).`)],
+      [/^The clicked PDOK IMRO source may contain transitional planning rules outside this DSO text corpus: (.+)$/,(id)=>tr('The clicked PDOK IMRO source may contain transitional planning rules outside this DSO text corpus: ','De aangeklikte PDOK-IMRO-bron kan overgangsplanregels buiten dit DSO-tekstcorpus bevatten: ','Die angeklickte PDOK-IMRO-Quelle kann Übergangsplanregeln außerhalb dieses DSO-Textbestands enthalten: ')+id]
+    ];
+    for(const [pattern,translate] of patterns){const match=raw.match(pattern);if(match)return translate(...match.slice(1));}
+    return raw;
+  }
   function warningText(value) {
     const code = typeof value === 'string' ? value : text(value?.code) || text(value?.errorCode);
     const messages = {
@@ -22,7 +55,7 @@
       dso_unavailable: () => tr('The current-rule document service is unavailable.', 'De service voor actuele regeldocumenten is niet beschikbaar.', 'Der Dienst für aktuelle Regeldokumente ist nicht verfügbar.'),
       ai_unavailable: () => tr('The cited summary is unavailable. Review the original passages below.', 'De samenvatting met bronverwijzingen is niet beschikbaar. Bekijk de oorspronkelijke passages hieronder.', 'Die Zusammenfassung mit Belegen ist nicht verfügbar. Originaltexte unten prüfen.')
     };
-    return text(value?.message) || (messages[code] ? messages[code]() : code);
+    return text(value?.message) ? diagnosticText(value.message) : messages[code] ? messages[code]() : diagnosticText(code);
   }
   function safeURL(value) {
     if (typeof value !== 'string') return null;
@@ -35,7 +68,7 @@
     const key = pointKey(point);
     if (key === model.key) return;
     stop(); model.key = key; model.point = point ? { lat: Number(point.lat), lng: Number(point.lng) } : null;
-    model.selection = null; model.query = ''; model.response = null; model.error = ''; model.node?.remove(); model.node = null;
+    model.selection = null; model.query = ''; model.responseQuery = ''; model.response = null; model.error = ''; model.node?.remove(); model.node = null;
   }
   function scopeText(selection) {
     const p = model.point;
@@ -55,16 +88,17 @@
   }
   function count(value) { return Number.isInteger(value) && value >= 0 ? value : null; }
   function coverageView(response) {
-    const coverage = response.coverage || {}, box = el('div', 'pv-rules-coverage');
+    const coverage = response.coverage || {}, box = el('div', 'pv-rules-coverage'+(response.coverage?.complete===true?'':' pv-rules-coverage-partial'));
     const warnings = Array.isArray(coverage.warnings) ? coverage.warnings : [];
     const checked = count(coverage.documentsChecked), available = count(coverage.documentsAvailable);
     const values = [];
     if (checked !== null) values.push(`${checked}${available !== null ? ` / ${available}` : ''} ` + tr('documents checked', 'documenten gecontroleerd', 'Dokumente geprüft'));
     values.push(coverage.complete === true ? tr('Returned text checked', 'Geleverde tekst gecontroleerd', 'Gelieferte Texte geprüft') : tr('Partial source coverage', 'Gedeeltelijke brondekking', 'Quellenlage unvollständig'));
     box.append(el('strong', '', values.join(' · ')));
+    if(coverage.complete!==true)box.append(el('p','pv-rules-coverage-summary',tr('The review below uses the returned excerpts. Missing sources, cross-references and parcel-wide applicability remain open.','De beoordeling hieronder gebruikt de ontvangen tekstfragmenten. Ontbrekende bronnen, kruisverwijzingen en toepasselijkheid op het gehele perceel blijven open.','Die folgende Einordnung nutzt die gelieferten Textauszüge. Fehlende Quellen, Querverweise und die Geltung für das gesamte Flurstück bleiben offen.')));
     const warningBox=el('details','pv-rules-warnings');warningBox.append(el('summary','',tr(`Source notes (${warnings.length})`,`Bronnotities (${warnings.length})`,`Quellenhinweise (${warnings.length})`)));if(warnings.length)box.append(warningBox);
-    for (const limit of (Array.isArray(coverage.limits)?coverage.limits:[]).slice(0,3))box.append(el('p','pv-rules-limit',String(limit)));
-    for (const warning of warnings.slice(0, 20)) {
+    for (const limit of (Array.isArray(coverage.limits)?coverage.limits:[]))box.append(el('p','pv-rules-limit',diagnosticText(limit)));
+    for (const warning of warnings) {
       const message = warningText(warning);
       if (message) warningBox.append(el('p', '', message));
     }
@@ -96,6 +130,7 @@
     const fragment = document.createDocumentFragment(), sources = sourceList(response), answer = response.answer;
     const citations = Array.isArray(answer?.citations) ? [...new Set(answer.citations.map(id => String(id)))] : [];
     const byId = new Map(sources.map((source, index) => [String(source.id), index]));
+    fragment.append(coverageView(response));
     // A generated summary without usable text and resolvable citations is not evidence.
     const grounded = response.state === 'answered' && text(answer?.summary).trim() && citations.length > 0 && citations.every(id => byId.has(id));
     if (grounded) {
@@ -124,7 +159,6 @@
       const message = !sources.length ? tr('No readable rule text was returned. No answer can be established from document titles or map labels alone.', 'Geen leesbare regeltekst ontvangen. Alleen documenttitels of kaartlabels zijn onvoldoende om een antwoord vast te stellen.', 'Es wurde kein lesbarer Regeltext geliefert. Dokumenttitel oder Kartenbeschriftungen allein reichen für eine Antwort nicht aus.') : response.state === 'unavailable' ? tr('Only the passages below are available. An answer could not be established.', 'Alleen de onderstaande passages zijn beschikbaar. Een antwoord kon niet worden vastgesteld.', 'Nur die folgenden Textstellen sind verfügbar. Eine Antwort konnte nicht festgestellt werden.') : tr('Relevant passages are shown below. They do not establish permission for the proposed activity.', 'Relevante passages staan hieronder. Ze stellen geen toestemming voor de voorgenomen activiteit vast.', 'Relevante Textstellen stehen unten. Sie stellen keine Genehmigung für das Vorhaben fest.');
       fragment.append(el('p', 'pv-rules-no-answer', message));
     }
-    fragment.append(coverageView(response));
     if (sources.length) {
       fragment.append(el('h4', 'pv-rules-sources-heading', tr('Original rule passages', 'Oorspronkelijke regelpassages', 'Originale Regeltexte')));
       sources.forEach((source, index) => fragment.append(sourceView(source, index)));
@@ -137,20 +171,25 @@
     const input = node.querySelector('textarea'), submit = node.querySelector('[type="submit"]'), cancel = node.querySelector('.pv-rules-cancel'), status = node.querySelector('.pv-rules-status'), results = node.querySelector('.pv-rules-results');
     input.readOnly = model.loading;
     submit.disabled = model.loading || !model.query.trim();
-    submit.textContent = model.loading ? tr('Searching rule text…', 'Regeltekst doorzoeken…', 'Regeltexte werden durchsucht…') : tr('Search these rules', 'Doorzoek deze regels', 'Diese Regeln durchsuchen');
+    submit.textContent = model.loading ? tr('Checking your proposal…', 'Voorstel controleren…', 'Vorhaben wird geprüft…') : tr('Check my proposal', 'Mijn voorstel controleren', 'Vorhaben prüfen');
     cancel.hidden = !model.loading;
     node.setAttribute('aria-busy', String(model.loading));
     status.classList.toggle('pv-rules-error', !!model.error);
     status.textContent = model.loading ? tr('Discovering documents for this point and checking the original text…', 'Documenten voor dit punt zoeken en de oorspronkelijke tekst controleren…', 'Dokumente für diesen Punkt werden gesucht und Originaltexte geprüft…') : model.error || (model.response ? sourceList(model.response).length ? tr('Source check completed. Review the passages below.', 'Broncontrole afgerond. Bekijk de passages hieronder.', 'Quellenprüfung abgeschlossen. Textstellen unten prüfen.') : tr('Source check completed. No readable rule text returned.', 'Broncontrole afgerond. Geen leesbare regeltekst ontvangen.', 'Quellenprüfung abgeschlossen. Kein lesbarer Regeltext geliefert.') : '');
-    results.replaceChildren();
-    if (model.response) results.append(resultView(model.response));
+    status.classList.toggle('is-loading',model.loading);
+    node.querySelector('.pv-rules-progress').hidden=!model.loading;
+    const previous=node.querySelector('.pv-rules-previous');previous.hidden=!model.response;previous.textContent=model.response?tr('Shown result for: ','Getoond resultaat voor: ','Angezeigtes Ergebnis für: ')+model.responseQuery+(model.loading?tr(' · New question is being checked.',' · Nieuwe vraag wordt gecontroleerd.',' · Neue Frage wird geprüft.'):''):'';
+    if(results._response!==model.response){results.replaceChildren();if(model.response)results.append(resultView(model.response));results._response=model.response;}
+
   }
   function mount(selection) {
     const section = el('section', 'detail-section pv-rules-search');
     section.dataset.pvTab = 'rules'; section.dataset.pvManaged = ''; section.setAttribute('aria-labelledby', 'pv-tab-rules'); section.setAttribute('role', 'tabpanel');
     section.append(el('div', 'pv-rules-eyebrow', tr('LOCATION RULE RESEARCH', 'REGELONDERZOEK OP LOCATIE', 'REGELRECHERCHE AM STANDORT')));
-    section.append(el('h3', '', tr('Ask about this location', 'Stel een vraag over deze locatie', 'Frage zu diesem Standort')));
+    section.append(el('h3', '', tr('What would you like to do here?', 'Wat wil je hier doen?', 'Was möchtest du hier tun?')));
     section.append(el('p', 'pv-rules-intro', tr('Search the actual published rule text for your proposed activity.', 'Doorzoek de gepubliceerde regeltekst voor je voorgenomen activiteit.', 'Durchsuche veröffentlichte Regeltexte für dein Vorhaben.')));
+    const steps=el('ol','pv-rules-steps');steps.setAttribute('aria-label',tr('How the check works','Hoe de controle werkt','So funktioniert die Prüfung'));
+    for(const step of [tr('Describe your proposal','Beschrijf je voorstel','Vorhaben beschreiben'),tr('Check original text','Originele tekst controleren','Originaltexte prüfen'),tr('Clarify open points','Open punten verduidelijken','Offene Punkte klären')])steps.append(el('li','',step));section.append(steps);
     section.append(el('p', 'pv-rules-scope', scopeText(selection)));
     section.append(el('p', 'pv-rules-scope-note', tr('Scope: the selected GPS point. Rules can differ within the same parcel; the whole parcel is not checked.', 'Bereik: het geselecteerde GPS-punt. Regels kunnen binnen hetzelfde perceel verschillen; het hele perceel wordt niet gecontroleerd.', 'Prüfumfang: der gewählte GPS-Punkt. Regeln können innerhalb eines Flurstücks abweichen; das gesamte Flurstück wird nicht geprüft.')));
     const form = el('form', 'pv-rules-form');
@@ -174,7 +213,9 @@
     const cancel = el('button', 'pv-button pv-rules-cancel', tr('Cancel', 'Annuleren', 'Abbrechen')); cancel.type = 'button'; cancel.addEventListener('click', () => { stop(); model.error = tr('Search cancelled.', 'Zoekopdracht geannuleerd.', 'Suche abgebrochen.'); paintResults(); input.focus({ preventScroll: true }); });
     actions.append(submit, cancel); form.append(actions); form.addEventListener('submit', event => { event.preventDefault(); run(); }); section.append(form);
     const status = el('p', 'pv-rules-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-    const results = el('div', 'pv-rules-results'); section.append(status, results);
+    const progress=el('div','pv-progress pv-rules-progress');progress.setAttribute('role','progressbar');progress.setAttribute('aria-label',tr('Rule text check','Regeltekstcontrole','Regeltextprüfung'));progress.append(el('span'));progress.hidden=true;
+    const previous=el('p','pv-rules-previous');previous.hidden=true;
+    const results = el('div', 'pv-rules-results'); section.append(status, progress, previous, results);
     model.node = section; model.language = lang(); model.renderedKey = model.key; paintResults(); return section;
   }
   function render(selection = currentSelection()) {
@@ -197,7 +238,7 @@
     try { rd = wgs84ToRd(model.point); } catch { rd = null; }
     if (!Array.isArray(rd) || rd.length !== 2 || !rd.every(Number.isFinite)) { model.error = tr('The selected coordinates could not be converted.', 'De geselecteerde coördinaten konden niet worden omgerekend.', 'Die gewählten Koordinaten konnten nicht umgerechnet werden.'); paintResults(); return; }
     stop(); const request = model.request, key = model.key; model.abort = new AbortController();const abortForTimeout=model.abort;setTimeout(()=>{if(model.abort===abortForTimeout){model.error=tr('Rule search timed out. Try a narrower question.','Regelzoekopdracht duurde te lang. Stel een gerichtere vraag.','Regelsuche dauerte zu lange. Frage enger eingrenzen.');abortForTimeout.abort();model.loading=false;paintResults();}},170000);
-    model.loading = true; model.error = ''; model.response = null; paintResults();
+    model.loading = true; model.error = ''; paintResults();
     const body = { point: { x: rd[0], y: rd[1] }, query, language: lang() };
     const planId = text(selection?.primary?.properties?.plangebied); if (planId) body.planId = planId;
     try {
@@ -209,7 +250,7 @@
       }
       if (!data || typeof data !== 'object' || !['answered', 'matches', 'unavailable'].includes(data.state)) throw new Error(tr('The rule service returned an unexpected result.', 'De regelservice gaf een onverwacht resultaat.', 'Der Regeldienst hat ein unerwartetes Ergebnis geliefert.'));
       if (request !== model.request || key !== model.key || pointKey(currentSelection()?.point) !== key) return;
-      model.response = data;
+      model.response = data;model.responseQuery=query;
     } catch (error) {
       if (error.name === 'AbortError' || request !== model.request || key !== model.key) return;
       model.error = error.message || tr('Rule search failed.', 'Regelzoekopdracht mislukt.', 'Regelsuche fehlgeschlagen.');

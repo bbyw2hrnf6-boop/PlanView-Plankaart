@@ -1,7 +1,12 @@
-import json,urllib.request,datetime,math
+import json,urllib.request,datetime,math,gzip
 from pathlib import Path
 OUT=Path(__file__).resolve().parent
 API='https://api.pdok.nl/kadaster/bestuurlijkegebieden/ogc/v1/collections'
+def write_boundary_files(data):
+    # Publish the same complete geometry bytes in both maintenance and browser forms.
+    payload=json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf-8')
+    (OUT/'netherlands.json').write_bytes(payload)
+    (OUT/'netherlands.json.gz').write_bytes(gzip.compress(payload,mtime=0))
 def get(kind):
     url=f'{API}/{kind}/items?f=json&limit=1000'; features=[]
     while url:
@@ -42,5 +47,5 @@ for f in get('gemeentegebied'):
 country={'type':'MultiPolygon','coordinates':[poly for p in provinces for poly in (p['geometry']['coordinates'] if p['geometry']['type']=='MultiPolygon' else [p['geometry']['coordinates']])]}
 data={'metadata':{'source':API,'retrieved':datetime.datetime.now(datetime.timezone.utc).isoformat(),'coverage':'European Netherlands','geometryToleranceDegrees':.00006},'country':{'name':'Nederland','bounds':bounds(country)},'provinces':sorted(provinces,key=lambda p:p['name']),'municipalities':sorted(municipalities,key=lambda p:p['name'])}
 assert len(provinces)==12 and len(municipalities)>330
-(OUT/'netherlands.json').write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')))
+write_boundary_files(data)
 print('boundaries',len(provinces),len(municipalities),(OUT/'netherlands.json').stat().st_size,flush=True)

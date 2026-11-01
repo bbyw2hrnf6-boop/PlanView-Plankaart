@@ -10,38 +10,65 @@
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="./vendor/leaflet.css">
   <link rel="stylesheet" href="./vendor/maplibre-gl.css">
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./interface.css?v=sidebar-scroll-20261001c">
-  <link rel="stylesheet" href="./local-services.css?v=6">
-  <link rel="stylesheet" href="./research-ui.css?v=20261002">
-  <link rel="stylesheet" href="./inspector-ui.css?v=20261002">
-  <link rel="stylesheet" href="./rules-search.css?v=search-audit-20261017">
-  <link rel="stylesheet" href="./workspace-ui.css?v=geo-preview-20261002f">
-  <link rel="stylesheet" href="./mobile-ui.css?v=20261015b">
+  <link rel="stylesheet" href="./styles.css?v=demo-20261018">
+  <link rel="stylesheet" href="./interface.css?v=demo-20261018">
+  <link rel="stylesheet" href="./local-services.css?v=demo-20261018">
+  <link rel="stylesheet" href="./research-ui.css?v=demo-20261018">
+  <link rel="stylesheet" href="./inspector-ui.css?v=demo-20261018">
+  <link rel="stylesheet" href="./rules-search.css?v=demo-20261018">
+  <link rel="stylesheet" href="./workspace-ui.css?v=demo-20261018">
+  <link rel="stylesheet" href="./mobile-ui.css?v=demo-20261018">
   <script src="./vendor/leaflet.js" defer></script>
-  <script src="./cloud-runtime.js?v=search-audit-20261017" defer></script>
-  <script src="./national-data.js?v=search-audit-20261017" defer></script>
-  <script src="./app.js?v=search-audit-20261017" defer></script>
-  <script src="./search-core.js?v=search-audit-20261017" defer></script>
-  <script src="./smart-search.js?v=search-audit-20261017" defer></script>
-  <script src="./i18n.js?v=search-audit-20261017" defer></script>
-  <script src="./layer-help.js?v=search-audit-20261017" defer></script>
-  <script src="./interface.js?v=search-audit-20261017" defer></script>
-  <script src="./context-layers.js?v=search-audit-20261017" defer></script>
-  <script src="./building-insights.js" defer></script>
-  <script src="./envelope-insights.js?v=plan-query-recovery-20260930b" defer></script>
-  <script src="./local-services.js?v=search-audit-20261017" defer></script>
-  <script src="./rules-search.js?v=search-audit-20261017" defer></script>
-  <script src="./geo-3d.js?v=auto-buildings-20261002" defer></script>
-  <script src="./workspace-ui.js?v=mobile-20261015b" defer></script>
-  <link rel="stylesheet" href="./ai-settings.css?v=20261015">
-  <script src="./ai-settings.js?v=20261015" defer></script>
+  <script src="./cloud-runtime.js?v=demo-20261018" defer></script>
+  <script src="./national-data.js?v=demo-20261018" defer></script>
+  <script src="./app.js?v=parcel-selection-20261019" defer></script>
+  <script src="./search-core.js?v=demo-20261018" defer></script>
+  <script src="./vendor/polygon-clipping.umd.min.js" defer></script>
+  <script src="./parcel-screen.js?v=demo-20261018" defer></script>
+  <script src="./vendor/geotiff-2.1.3.js" defer></script>
+  <script src="./terrain-screen.js?v=demo-20261018" defer></script>
+  <script src="./environmental-sources.js?v=demo-20261018" defer></script>
+  <script src="./environment-screen.js?v=demo-20261018" defer></script>
+  <link rel="stylesheet" href="./environment-insights.css?v=demo-20261018">
+  <script src="./search-criteria-ui.js?v=demo-20261018" defer></script>
+  <link rel="stylesheet" href="./search-criteria.css?v=demo-20261018">
+  <script src="./smart-search.js?v=demo-20261018" defer></script>
+  <script src="./i18n.js?v=demo-20261018" defer></script>
+  <script src="./layer-help.js?v=demo-20261018" defer></script>
+  <script src="./interface.js?v=permits-20261018" defer></script>
+  <script src="./context-layers.js?v=demo-20261018" defer></script>
+  <script src="./building-insights.js?v=demo-20261018" defer></script>
+  <script src="./envelope-insights.js?v=demo-20261018" defer></script>
+  <script src="./environment-insights.js?v=demo-20261018" defer></script>
+  <script src="./local-services.js?v=demo-20261018" defer></script>
+  <script src="./rules-search.js?v=demo-20261018" defer></script>
+  <script src="./permits-ui.js?v=permits-20261019-title-address" defer></script>
+  <script src="./geo-3d.js?v=demo-20261018" defer></script>
+  <script src="./workspace-ui.js?v=demo-20261018" defer></script>
+  <link rel="stylesheet" href="./ai-settings.css?v=demo-20261018">
+  <script src="./ai-settings.js?v=demo-20261018" defer></script>
+  <link rel="stylesheet" href="./desktop-journey.css?v=demo-20261018">
+  <script src="./desktop-journey-core.js?v=demo-20261018" defer></script>
+  <script src="./desktop-journey.js?v=parcel-selection-20261019-parcel-only" defer></script>
+  <link rel="stylesheet" href="./parcel-address.css?v=20261019">
+  <script src="./parcel-address.js?v=20261019" defer></script>
+  <link rel="stylesheet" href="./workspace-resize.css?v=demo-20261018">
+  <script src="./workspace-resize.js?v=demo-20261018" defer></script>
+  <script src="./comparison-core.js?v=demo-20261018" defer></script>
+  <script src="./compare-climate.js?v=demo-20261018" defer></script>
+  <script src="./compare-routing.js?v=demo-20261018" defer></script>
+  <link rel="stylesheet" href="./comparison-ui.css?v=demo-20261018">
+  <script src="./comparison-ui.js?v=demo-20261018-climate-languages" defer></script>
+  <link rel="stylesheet" href="./feedback.css?v=demo-20261018">
+  <link rel="stylesheet" href="./permits-ui.css?v=permits-20261019-association-views">
+  <script src="./search-routing.js?v=demo-20261018" defer></script>
+  <script src="./demo-guide.js?v=demo-20261018" defer></script>
 </head>
 <body class="theme-dark">
   <div class="app-shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true"><span></span></span><span class="brand-name">planview<span class="brand-period">.</span></span><span class="brand-divider"></span><span class="product-name">Spatial intelligence</span></div>
-      <div class="search-wrap"><span class="icon search-icon" data-icon="search"></span><input id="search" type="search" placeholder="Search address, place or parcel" aria-label="Search address, place or parcel" autocomplete="off"><button id="advanced-toggle" class="advanced-toggle" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced search</button><kbd>⌘ K</kbd><div id="search-results" class="search-results" hidden></div><section id="advanced-panel" class="advanced-panel" aria-label="Advanced area search" hidden><div class="advanced-heading"><div><span class="eyebrow">PLANVIEW SEARCH</span><h2>Find areas by description</h2><span id="advanced-backend" class="advanced-backend">Checking local AI…</span></div><button id="advanced-close" class="icon-button" type="button" aria-label="Close advanced search">×</button></div><div class="pv-search-tabs" role="tablist" aria-label="Search workspace"><button type="button" role="tab" aria-selected="true" data-search-tab="current">Current search</button><button type="button" role="tab" aria-selected="false" data-search-tab="history">Search history <span id="search-history-count">0</span></button></div><div id="advanced-current-view"><p class="advanced-help">Describe a place and its surroundings. Search near mapped stations, parks, sports grounds, pools, marinas and more; PlanView checks plan areas before highlighting leads.</p><label for="advanced-query">What are you looking for?</label><textarea id="advanced-query" rows="3" placeholder="Example: Unbuilt land near a campsite and town, away from industry"></textarea><div class="advanced-examples"><button type="button" data-example="Unbuilt residential land with a building envelope and a final plan">Unbuilt housing sites</button><button type="button" data-example="Potential building land near a camping and town, away from industry and major roads">Near camping + town</button><button type="button" data-example="Residential land within 3 km of a train station">Near train station</button></div><div class="advanced-scope"><label for="advanced-scope-select">Search area</label><select id="advanced-scope-select"><option value="view">Current map view</option><option value="municipality">Selected municipality</option><option value="province">Selected province</option><option value="country">All Netherlands · 12 provinces</option><option value="drawn" disabled>Marked area on map</option></select><button id="advanced-draw" type="button">▧ Mark area on map</button><button id="advanced-clear-area" type="button" hidden>Clear area</button><span id="advanced-scope-label">Current map view</span></div><div id="advanced-parsed" class="advanced-parsed" hidden></div><button id="advanced-run" class="advanced-run" type="button">Find areas</button><div id="advanced-status" class="advanced-status" role="status"></div><div id="advanced-results" class="advanced-results"></div><p class="advanced-caveat">Screening leads from sampled points. TOP10NL and ProRail distances are approximate; quietness and a building right are not verified.</p></div><div id="advanced-history-view" class="advanced-history-view" hidden></div></section><section id="search-results-dock" class="search-results-dock" aria-label="Search results" hidden><header><div><span class="eyebrow">PLANVIEW SEARCH</span><strong id="search-dock-title">Search results</strong></div><button id="search-dock-close" type="button" aria-label="Hide search results">×</button></header><div class="search-dock-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-dock-tab="results">Results</button><button type="button" role="tab" aria-selected="false" data-dock-tab="history">History <span id="dock-history-count">0</span></button></div><div id="search-dock-body"></div><footer><button id="search-dock-clear" type="button">Clear search</button></footer></section><button id="search-dock-reopen" class="search-dock-reopen" type="button" hidden>Search</button></div>
+      <div class="search-wrap"><span class="icon search-icon" data-icon="search"></span><input id="search" type="search" placeholder="Search address, place or parcel" aria-label="Search address, place or parcel" autocomplete="off"><button id="advanced-toggle" class="advanced-toggle" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced search</button><kbd>⌘ K</kbd><div id="search-results" class="search-results" hidden></div><section id="advanced-panel" class="advanced-panel" aria-label="Advanced area search" hidden><div class="advanced-heading"><div><span class="eyebrow">PLANVIEW SEARCH</span><h2>Find areas by description</h2><span id="advanced-backend" class="advanced-backend">Checking local AI…</span></div><button id="advanced-close" class="icon-button" type="button" aria-label="Close advanced search">×</button></div><div class="pv-search-tabs" role="tablist" aria-label="Search workspace"><button type="button" role="tab" aria-selected="true" data-search-tab="current">Current search</button><button type="button" role="tab" aria-selected="false" data-search-tab="history">Search history <span id="search-history-count">0</span></button></div><div id="advanced-current-view"><p class="advanced-help">Combine parcel, planning and distance criteria with noise, terrain slope, soil and groundwater models. Review the interpreted filters before scanning.</p><label for="advanced-query">What are you looking for?</label><textarea id="advanced-query" rows="3" placeholder="Example: Parcels between 500 and 2000 m², at least 100 m² bouwvlak, no Natura 2000 overlap"></textarea><div class="advanced-examples"><button type="button" data-example="Unbuilt residential land with a building envelope and a final plan">Unbuilt housing sites</button><button type="button" data-example="Potential building land near a camping and town, away from industry and major roads">Near camping + town</button><button type="button" data-example="Residential land within 3 km of a train station">Near train station</button></div><div class="advanced-scope"><label for="advanced-scope-select">Search area</label><select id="advanced-scope-select"><option value="view">Current map view</option><option value="municipality">Selected municipality</option><option value="province">Selected province</option><option value="country">All Netherlands · 12 provinces</option><option value="drawn" disabled>Marked area on map</option></select><button id="advanced-draw" type="button">▧ Mark area on map</button><button id="advanced-clear-area" type="button" hidden>Clear area</button><span id="advanced-scope-label">Current map view</span></div><div id="advanced-parsed" class="advanced-parsed" hidden></div><button id="advanced-run" class="advanced-run" type="button">Find areas</button><div id="advanced-status" class="advanced-status" role="status"></div><div id="advanced-results" class="advanced-results"></div><p class="advanced-caveat">Screening leads from sampled points. TOP10NL and ProRail distances are approximate; quietness and a building right are not verified.</p></div><div id="advanced-history-view" class="advanced-history-view" hidden></div></section><section id="search-results-dock" class="search-results-dock" aria-label="Search results" hidden><header><div><span class="eyebrow">PLANVIEW SEARCH</span><strong id="search-dock-title">Search results</strong></div><button id="search-dock-close" type="button" aria-label="Hide search results">×</button></header><div class="search-dock-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-dock-tab="results">Results</button><button type="button" role="tab" aria-selected="false" data-dock-tab="history">History <span id="dock-history-count">0</span></button></div><div id="search-dock-body"></div><footer><button id="search-dock-clear" type="button">Clear search</button></footer></section><button id="search-dock-reopen" class="search-dock-reopen" type="button" hidden>Search</button></div>
       <div class="header-actions"><span class="data-badge"><span class="pulse"></span> PDOK PLAN DATA</span><label class="language-picker"><span class="sr-only">Language</span><select id="language" aria-label="Language"><option value="en">EN · English</option><option value="nl">NL · Nederlands</option><option value="de">DE · Deutsch</option></select></label><button id="services-settings" class="icon-button" type="button" aria-label="Local data settings" title="Local data settings"><span data-icon="settings"></span></button><button id="theme-toggle" class="icon-button" type="button" aria-label="Switch color theme" title="Switch color theme"><span data-icon="moon"></span></button><button id="mobile-layers" class="icon-button mobile-only" type="button" aria-label="Open layers"><span data-icon="layers"></span></button></div>
     </header>
     <div class="workspace">

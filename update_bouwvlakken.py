@@ -207,3 +207,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+    from update_envelope_spatial_index import main as update_spatial_tiles
+    update_spatial_tiles()

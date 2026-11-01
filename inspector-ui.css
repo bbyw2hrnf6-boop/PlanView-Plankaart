@@ -73,3 +73,32 @@
 .pv-confirm-dialog strong{display:block;overflow-wrap:anywhere}
 .pv-confirm-dialog .pv-inline-actions{justify-content:flex-end;flex-wrap:wrap}
 @media(max-width:700px){.pv-cases-layout{grid-template-columns:1fr}.pv-case-list{padding:0 0 14px;border-right:0;border-bottom:1px solid var(--line);max-height:230px;overflow:auto}.pv-case-facts{grid-template-columns:1fr}.pv-case-detail{padding:0}.pv-primary-actions{padding-inline:16px}.pv-workbench-head{flex-direction:column;align-items:flex-start}.pv-workbench-head>.pv-inline-actions{justify-content:flex-start}.pv-table thead th:first-child,.pv-table tbody th[scope="row"]{width:150px}}
+
+/* A compact, real-image location card belongs to the dossier, not over the map. */
+#detail-content .pv-location-context{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--surface);container-type:inline-size}
+#detail-content .pv-location-context #pv-street:not([hidden]){display:grid!important;grid-template-columns:minmax(120px,40%) minmax(0,1fr);position:relative;inset:auto;width:100%;height:auto;max-height:none;margin:0;border:1px solid var(--line);border-radius:12px;box-shadow:none;z-index:auto;overflow:hidden;background:var(--surface2)}
+#detail-content .pv-location-context #pv-street[hidden]{display:none!important}
+#detail-content .pv-location-context .pv-preview-image{height:146px;min-width:0;align-self:stretch;background:var(--surface2)}
+#detail-content .pv-location-context .pv-aerial{height:100%;width:100%}
+#detail-content .pv-location-context .pv-street-copy{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;padding:12px;min-width:0;background:var(--surface2)}
+#detail-content .pv-location-context .pv-preview-head{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:0;padding:0;background:transparent;font-size:12px}
+#detail-content .pv-location-context .pv-preview-head span{font-size:10px;font-variant-numeric:tabular-nums}
+#detail-content .pv-location-context .pv-preview-primary{display:inline-flex;align-items:center;gap:6px;min-height:32px;font-size:12px;font-weight:700;color:var(--mint);text-decoration:none}
+#detail-content .pv-location-context .pv-preview-primary svg{width:14px;height:14px;flex:none}
+#detail-content .pv-location-context .pv-preview-links{display:flex;gap:10px;margin:0}
+#detail-content .pv-location-context .pv-preview-links a{font-size:10px;min-height:20px}
+#detail-content .pv-location-context .pv-preview-note{font-size:9px;line-height:1.45;color:var(--muted);margin:0;max-width:32ch}
+.pv-preview-credit{position:absolute;top:6px;left:6px;z-index:500;border-radius:4px;padding:3px 5px;font-size:8px;background:rgb(255 255 255 / 92%);color:#24423b;pointer-events:none}
+.pv-preview-status{position:absolute;inset:0;z-index:550;display:flex;align-items:center;justify-content:center;padding:14px;background:var(--surface2);font-size:11px;line-height:1.5;color:var(--muted)}
+.pv-preview-status[hidden]{display:none}
+.pv-rule-reference-details{width:100%}.pv-rule-reference-details summary{font-size:12px;font-weight:650;cursor:pointer;padding:4px 0;min-height:28px}.pv-rule-reference-details p{margin:8px 0}.pv-rule-reference-details .pv-button{margin-top:8px;font-size:12px}
+.pv-empty-actions{justify-content:center;margin-top:22px;flex-wrap:wrap}.pv-address-state{padding:16px;color:var(--muted);font-size:12px;line-height:1.6}.pv-address-state .pv-progress{margin-top:10px}.pv-location-loading .pv-progress{max-width:250px;margin:20px auto}
+.pv-note-history{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface2);font-size:12px}.pv-note-history summary{cursor:pointer;color:var(--muted)}.pv-note-history blockquote{margin:12px 0 0;padding:0 0 0 10px;border-left:2px solid var(--line2);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+@container(max-width:300px){#detail-content .pv-location-context #pv-street:not([hidden]){grid-template-columns:1fr}#detail-content .pv-location-context .pv-preview-image{height:110px}#detail-content .pv-location-context .pv-street-copy{gap:4px}#detail-content .pv-location-context .pv-preview-note{max-width:none}}
+@media(prefers-reduced-motion:reduce){#detail-content .pv-location-context *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+.pv-preview-status{flex-direction:column;gap:8px}.pv-preview-status.pv-loading::after{width:100%;flex:none}
+
+/* Leaflet panes must remain below the sticky dossier header while scrolling. */
+#detail-content .pv-location-context{position:relative;isolation:isolate;z-index:0}
+#detail-content .pv-location-context #pv-street,#detail-content .pv-location-context .pv-preview-image{isolation:isolate}

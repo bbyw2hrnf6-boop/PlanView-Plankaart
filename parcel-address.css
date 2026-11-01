@@ -1,0 +1,8 @@
+.pv-parcel-address{margin:10px 0 8px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.pv-parcel-address-label{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+.pv-parcel-address strong{display:block;font-weight:650;color:var(--text)}
+.pv-parcel-address summary{cursor:pointer;font-weight:650;min-height:36px;align-content:center;color:var(--text)}
+.pv-parcel-address summary:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+.pv-parcel-address ul{padding-left:18px;margin:6px 0;max-height:130px;overflow:auto}
+.pv-parcel-address small{display:block;color:var(--muted);font-size:10px;margin-top:5px}
+@media(max-width:600px){.pv-parcel-address{margin:6px 0;padding:7px 10px}.pv-parcel-address summary{min-height:44px}}

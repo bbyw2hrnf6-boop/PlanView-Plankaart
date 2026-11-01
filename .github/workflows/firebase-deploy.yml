@@ -1,0 +1,45 @@
+name: Deploy Planview to Firebase
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: planview-firebase-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: ${{ vars.FIREBASE_PROJECT_ID != '' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_DEPLOY_SERVICE_ACCOUNT != '' }}
+    runs-on: ubuntu-latest
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            firebase/package-lock.json
+            firebase/functions/package-lock.json
+      - run: npm ci --prefix firebase
+      - run: npm ci --prefix firebase/functions
+      - name: Check account and source
+        run: |
+          python3 -c 'import json,os; assert json.load(open(".firebaserc"))["projects"]["default"] == os.environ["PROJECT"]'
+          python3 tools/firebase_release.py audit
+          node --test tests/*.test.cjs tests/*.test.mjs
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 tools/firebase_release.py prepare
+        env:
+          PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Deploy matching API, rules and frontend
+        run: ./firebase/node_modules/.bin/firebase deploy --project "$PROJECT" --only functions:planview,firestore:rules,firestore:indexes,hosting --non-interactive
+        env:
+          PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}

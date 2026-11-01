@@ -8,3 +8,22 @@ __pycache__/
 # Local cloud deployment receipts and generated version
 .planview-cloud/
 release.json
+
+# Firebase dependencies, generated hosting/function sources and local credentials
+node_modules/
+.firebase/
+.firebase-build/
+firebase/functions/generated/
+firebase/functions/.secret.local
+firebase/functions/.runtimeconfig.json
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+gha-creds-*.json
+*service-account*.json
+*serviceAccount*.json
+# One-time publication archives are kept locally, never pushed as Git source.
+/maintenance/**/*.tar.gz
+/maintenance/**/*.tar
+# Historical release evidence, OCR downloads and native compiler caches stay local.
+/maintenance/

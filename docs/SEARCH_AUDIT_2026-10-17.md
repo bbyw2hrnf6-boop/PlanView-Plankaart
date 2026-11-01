@@ -2,7 +2,7 @@
 
 Implementiert: explizite KI-Distanzregeln mit Minimum/Maximum und Meterumrechnung; Ortsanforderung gegen Suchraum geprüft; echte Polygonabstände für verfügbare Geometrien; Extent-Abstände als ungewisse Prüfung; Context-Radius passend zu editierten Grenzen; getrennte Baufenster; BAG-Polygonabstand; neue DSO-Textsuche je ausgewähltem Punkt. KI-Antworten brauchen existierende Quell-IDs, wörtliche Textbelege und passende Zahlen. DSO-Webschlüssel werden getrennt je Konto verschlüsselt gespeichert; keine lokalen Schlüssel werden synchronisiert.
 
-Offen: vollständige Parzellenprüfung statt einzelner Punkte; IMRO/TAM-Altregeltexte zusätzlich zum DSO-Korpus; externe Verweise/Anlagen; Schutzgebiets-, Projekt- und NOVEX-Daten sind bisher Kontextlayer und keine automatischen Ausschlussfilter; landesweite Suche bleibt eine Stichprobe. Die neue Regelsuche ersetzt keine vollständige Genehmigungsprüfung.
+Aktueller Stand am 18. Oktober: Flächengröße, BAG-Bedeckung, Baufensterüberschneidung, Natura-2000-Ausschluss/-Abstand und native AHN-Hangneigung werden am aufgelösten Grundstück geprüft. Nutzung, Planstatus, Lärm, Boden, Grundwasser und Regeltexte betreffen weiterhin den ausgewählten Prüfpunkt. Offen bleiben ein vollständiges landesweites Parzelleninventar, IMRO/TAM-Altregeltexte zusätzlich zum DSO-Korpus sowie externe Verweise/Anlagen. NNN, Grundwasserschutzzonen, Projekt- und NOVEX-Daten sind Kontextlayer; die landesweite Suche bleibt eine Stichprobe. Die neue Regelsuche ersetzt keine vollständige Genehmigungsprüfung.
 
 DSO-Abruf: aktuelle Dokumentstruktur plus punktgefilterte Annotationen, inkl. nationalem Bbl. Maximal zwölf Instrumente und 60 Sekunden Quellenabruf; nicht geladene Dokumente sind ausdrücklich markiert. Direkt zugeordnete Texte, Behörden-Instruktionen und unbestätigter Dokumentkontext bleiben unterscheidbar. KI-Modell unverändert GPT-6 Luna / High.
 
@@ -73,3 +73,8 @@ Die Reparaturen sind in die kanonische App integriert. Enthalten sind ein reines
 - [PDOK TOP10NL Downloadviewer](https://app.pdok.nl/brt/top10nl/download-viewer/): beschreibt Export/API und Aktualität je Featuretyp.
 - [Geonovum: RO-Standards](https://www.geonovum.nl/geo-standaarden/ro-standaarden-ruimtelijke-ordening): erklärt das parallele IMRO-/Omgevingswet-Übergangsumfeld.
 - [IPLO: Omgevingsplan von Rechts wegen](https://iplo.nl/regelgeving/instrumenten/omgevingsplan/omgevingsplan-rechtswege/): nennt auch Bestandteile, die nicht in Regels op de kaart dargestellt sind. Das Produkt darf deshalb die abgerufenen Texte nicht als garantiert vollständige Gesamtheit aller geltenden Regeln bezeichnen.
+
+
+## Desktop-Folgeaudit · 18. Oktober 2026
+
+Die älteren Tabellen dokumentieren den damaligen Ausgangsstand und sind keine aktuelle Fehlerliste. Die Desktop-Überarbeitung, Ladezustände, Kriterienauswahl, optionale Reisezeitprüfung und Demo-Validierung sind in `DEMO_READINESS_2026-10-18.md` dokumentiert. Vollständige Suchkriterien und demo-taugliche Beispiele stehen im finalen HTML-Briefing. Unbekannte Daten bleiben unbekannt; kartierte Treffer sind keine Baugenehmigung.

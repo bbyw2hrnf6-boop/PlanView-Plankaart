@@ -50,3 +50,33 @@ test('national bouwvlak overview includes every province and resolves source geo
  for(const province of region.provinces){const [s,w,n,e]=province.bounds;const item=overview.find(item=>{const [lng,lat]=item.point;return lat>=s&&lat<=n&&lng>=w&&lng<=e&&g.geometryContains(province.geometry,{lat,lng});});assert.ok(item,province.name+' bouwvlakken');
   const rows=JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(base,`${item.tile}.geo.json.gz`))));assert.ok(rows.some(([key])=>key===`${item.plan}|${item.id}`),province.name+' geometry provenance');}
 });
+
+test('compressed nationwide boundaries reproduce every original byte',()=>{
+ const plain=fs.readFileSync(path.join(root,'netherlands.json'));
+ const compressed=fs.readFileSync(path.join(root,'netherlands.json.gz'));
+ assert.deepEqual(require('node:zlib').gunzipSync(compressed),plain,'all coordinates, islands, holes and metadata remain exact');
+ assert.equal(compressed.readUInt32LE(4),0,'gzip header has no varying generation timestamp');
+});
+
+test('actual region initialization loads the complete compressed inventory',async()=>{
+ const requests=[],layers=[],nodes=new Map();
+ const getElementById=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:''});return nodes.get(id);};
+ const runtime=vm.createContext({
+  document:{getElementById,querySelectorAll:()=>[]},window:{addEventListener(){}},
+  fetch:async url=>{requests.push(url);assert.equal(url,'./netherlands.json.gz');return new Response(fs.readFileSync(path.join(root,'netherlands.json.gz')));},
+  Response,Blob,DecompressionStream,TextDecoder,Uint8Array,
+  L:{geoJSON:data=>{layers.push(data);return {addTo(){return this;},bringToFront(){}};}}
+ });
+ vm.runInContext(fs.readFileSync(path.join(root,'national-data.js'),'utf8'),runtime);
+ vm.runInContext(fs.readFileSync(path.join(root,'app.js'),'utf8')+'\nglobalThis.boot={loadRegion,state};',runtime);
+ runtime.boot.state.map={getZoom:()=>9,hasLayer:()=>false,removeLayer(){}};
+ runtime.boot.state.detailLayers={selection:{},pin:{}};
+ await runtime.boot.loadRegion();
+ assert.deepEqual(requests,['./netherlands.json.gz']);
+ assert.equal(JSON.stringify(runtime.boot.state.region),JSON.stringify(region));
+ assert.equal(layers[0].features.length,342);assert.equal(layers[1].features.length,12);
+ assert.match(nodes.get('municipality').innerHTML,/Maastricht/);
+ assert.match(nodes.get('province').innerHTML,/Limburg/);
+ const index=fs.readFileSync(path.join(root,'index.html'),'utf8');
+ assert.ok(index.indexOf('src="./national-data.js')<index.indexOf('src="./app.js'),'gzip loader is installed before region initialization');
+});

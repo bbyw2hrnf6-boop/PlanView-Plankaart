@@ -26,6 +26,9 @@
   };
   window.planviewAIMessage=code=>(messages[code]||messages.service_unavailable)();
   function render(){
+    section.setAttribute('aria-busy',String(busy));
+    $('ai-key-message').classList.toggle('pv-loading',busy);
+    $('ai-test-key').setAttribute('aria-busy',String(busy));
     $('ai-settings-title').textContent=tr('AI search','AI-zoeken','KI-Suche');
     $('ai-key-label').textContent='OpenAI API key';
     $('ai-api-key').placeholder=tr('Paste your API key','Plak je API-sleutel','API-Key einfügen');
@@ -40,7 +43,7 @@
     $('ai-test-key').disabled=busy||!loaded||!(configured||available);
     $('ai-remove-key').disabled=busy||!loaded||!configured;
     $('ai-api-key').disabled=busy;
-    $('ai-key-message').textContent=messageCode?window.planviewAIMessage(messageCode):'';
+    $('ai-key-message').textContent=messageCode?window.planviewAIMessage(messageCode):busy?tr('Checking your connection…','Verbinding controleren…','Verbindung wird geprüft…'):'';
     $('ai-key-message').dataset.error=String(!['','saved','removed','tested'].includes(messageCode));
   }
   async function request(path,payload){

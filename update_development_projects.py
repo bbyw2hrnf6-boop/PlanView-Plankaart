@@ -13,6 +13,16 @@ PROVINCES = {'20': 'Groningen', '21': 'Fryslân', '22': 'Drenthe', '23': 'Overij
              '28': 'Zuid-Holland', '29': 'Zeeland', '30': 'Noord-Brabant', '31': 'Limburg'}
 
 
+def write_project_snapshot(path, payload):
+    """Retain the readable source and publish its byte-identical gzip twin."""
+    raw = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    for target, content in ((path, raw),
+                            (path.with_suffix(path.suffix + '.gz'), gzip.compress(raw, mtime=0))):
+        temporary = target.with_suffix(target.suffix + '.tmp')
+        temporary.write_bytes(content)
+        temporary.replace(target)
+
+
 def get(path):
     with urllib.request.urlopen(BASE + path, timeout=60) as response:
         raw = response.read()
@@ -110,7 +120,7 @@ payload = {
 }
 if unknown:
     raise RuntimeError('Unresolved project provinces: ' + ', '.join(unknown[:10]))
-OUT.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+write_project_snapshot(OUT, payload)
 print(json.dumps({'path': str(OUT), 'bytes': OUT.stat().st_size, 'features': len(features),
                   'provinceCounts': payload['metadata']['provinceCounts'], 'missingProvinces': missing,
                   'sourceLastModified': modified}, ensure_ascii=False))

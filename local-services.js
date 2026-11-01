@@ -137,7 +137,7 @@
     finally{if(ticket===service.ticket){service.rulesLoading=false;if(isCurrent(p))renderDetails();}}
   }
   function ruleSummary(){
-    if(service.rulesLoading)return `<p class="pv-dso-loading">${tr('Checking rules at this point…','Regels op dit punt controleren…','Regeln an diesem Punkt werden geprüft…')}</p>`;
+    if(service.rulesLoading)return `<p class="pv-dso-loading pv-loading" role="status">${tr('Checking rules at this point…','Regels op dit punt controleren…','Regeln an diesem Punkt werden geprüft…')}</p>`;
     if(service.rulesError)return `<p class="source-warning">${tr('Point rule check unavailable:','Puntcontrole niet beschikbaar:','Punktprüfung nicht verfügbar:')} ${esc(service.rulesError)}</p>`;
     if(!service.rules)return '';
     const instruments=service.rules.instruments||[];
@@ -170,7 +170,7 @@
     const section=document.createElement('section');section.className='detail-section pv-services-detail';section.dataset.pvManaged='';
     let dso='';
     if(service.configured.dso){
-      if(service.loading)dso=`<p>${tr('Loading current DSO sources at this point…','Huidige DSO-bronnen op dit punt laden…','Aktuelle DSO-Quellen an diesem Punkt werden geladen…')}</p>`;
+      if(service.loading)dso=`<p class="pv-loading" role="status">${tr('Loading current DSO sources at this point…','Huidige DSO-bronnen op dit punt laden…','Aktuelle DSO-Quellen an diesem Punkt werden geladen…')}</p>`;
       else if(service.error)dso=`<p class="source-warning">${tr('DSO could not be loaded:','DSO kon niet worden geladen:','DSO konnte nicht geladen werden:')} ${esc(service.error)}</p>`;
       else if(service.point)dso=`${ruleSummary()}${entry.on&&service.areas.length?`<p>${tr('Purple dashed outline: the municipality-wide Omgevingsplan extent, not a parcel-specific rule boundary.','Paarse stippellijn: het gemeentebrede omgevingsplangebied, geen grens van een perceelspecifieke regel.','Violetter Umriss: das gemeindeweite Omgevingsplangebiet, keine Grenze einer grundstücksspezifischen Regel.')}</p>`:''}<details class="pv-dso-documents"><summary>${tr('All DSO documents at this point','Alle DSO-documenten op dit punt','Alle DSO-Dokumente an diesem Punkt')} · ${service.point.documents.length}</summary>${documentRows()}</details>`;
       else dso=`<p>${tr('Select a point to load DSO documents.','Kies een punt om DSO-documenten te laden.','Punkt wählen, um DSO-Dokumente zu laden.')}</p>`;
@@ -187,7 +187,7 @@
     const id=state.selected?.primary?.properties?.plangebied;
     if(service.configured.rp&&id){try{service.rp=await getJSON(`/api/rp/plan?id=${encodeURIComponent(id)}`);if(isCurrent(p))renderDetails();}catch{/* PDOK remains the source when RP V4 has no record. */}}
   };
-  service.reviewSelectedPoint=()=>{if(!state.selected)return;document.querySelector('.pv-inspector-tabs [data-tab="rules"]')?.click();if(!service.rules&&!service.rulesLoading&&service.configured.dso)queryPoint(state.selected.point);document.querySelector('.pv-dso-review,.pv-dso-loading')?.scrollIntoView({behavior:'smooth',block:'nearest'});};
+  service.reviewSelectedPoint=()=>{if(!state.selected)return;document.querySelector('.pv-inspector-tabs [data-tab="rules"]')?.click();if(!service.rules&&!service.rulesLoading&&service.configured.dso)queryPoint(state.selected.point);document.querySelector('.pv-dso-review,.pv-dso-loading')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});};
   const dialog=$('services-dialog');
   const closeDialog=()=>{dialog.hidden=true;document.body.classList.remove('services-open');if(cloud){$('dso-key').value='';$('rp-key').value='';}};
   $('services-settings').addEventListener('click',()=>{message('');dialog.hidden=false;document.body.classList.add('services-open');loadSettings();});

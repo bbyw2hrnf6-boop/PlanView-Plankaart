@@ -1,0 +1,16 @@
+{
+  "retrievedAt": "2026-10-18",
+  "sources": {
+    "maastricht-sru.xml": "https://repository.overheid.nl/sru?operation=searchRetrieve&version=2.0&maximumRecords=25&query=c.product-area%3D%3D%22officielepublicaties%22+AND+%28w.locatiepunt+within%2Fetrs89+%2250.8496833+5.6848702+0.100%22%29+AND+dt.type%3D%22omgevingsvergunning%22+sortBy+dt.modified%2Fsort.descending",
+    "maastricht-grant.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2023/gmb-2023-288376/1/xml/gmb-2023-288376.xml",
+    "maastricht-parcels.json": "https://api.pdok.nl/kadaster/brk-kadastrale-kaart/ogc/v1/collections/perceel/items?bbox=5.684858,50.849671,5.684882,50.849695&limit=100&f=json",
+    "maastricht-addresses.json": "https://api.pdok.nl/bzk/locatieserver/search/v3_1/reverse?lat=50.849683&lon=5.68487&type=adres&rows=30&fl=*",
+    "kerkdriel-refusal.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2025/gmb-2025-386400/1/xml/gmb-2025-386400.xml",
+    "maastricht-history-sru.xml": "https://repository.overheid.nl/sru?operation=searchRetrieve&version=2.0&maximumRecords=25&query=c.product-area%3D%3D%22officielepublicaties%22+AND+dt.type%3D%22omgevingsvergunning%22+AND+%28cql.textAndIndexes+adj+%22Brusselsestraat+10C%22+AND+cql.textAndIndexes%3D%22Maastricht%22%29+sortBy+dt.modified%2Fsort.descending",
+    "gmb-2023-288376.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2023/gmb-2023-288376/1/xml/gmb-2023-288376.xml",
+    "gmb-2023-103085.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2023/gmb-2023-103085/1/xml/gmb-2023-103085.xml",
+    "gmb-2023-33523.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2023/gmb-2023-33523/1/xml/gmb-2023-33523.xml",
+    "gmb-2022-376260.xml": "https://repository.overheid.nl/frbr/officielepublicaties/gmb/2022/gmb-2022-376260/1/xml/gmb-2022-376260.xml"
+  },
+  "note": "Public KOOP and PDOK source responses, kept only as offline parser fixtures. No private account data. Derived fixtures in tests are explicitly synthetic."
+}

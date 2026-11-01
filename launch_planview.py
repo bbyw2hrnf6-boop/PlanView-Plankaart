@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 INSTANCE_ID = hashlib.sha256(str(ROOT).encode()).hexdigest()[:12]
 PORTS = range(4174, 4185)
-INTERPRETER_VERSION = 3
+INTERPRETER_VERSION = 6
 
 
 def status(port):

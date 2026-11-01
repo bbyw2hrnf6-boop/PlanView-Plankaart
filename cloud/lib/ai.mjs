@@ -1,5 +1,8 @@
 import { fetchPointCorpus } from './rule-sources.mjs';
 import { cleanRuleInput, rankRuleSources, callRuleOpenAI } from './rule-answer.mjs';
+import { RoutingError, cleanRouteInput, callRouting } from './routes.mjs';
+import { PermitError, cleanPermitInput, fetchPermits } from './permits.mjs';
+import { cleanPermitQuestionInput, retrievePermitQuestionSources, callPermitIntentOpenAI, callPermitOpenAI } from './permit-answer.mjs';
 // Server-only PlanView API. No prompts, keys or results are logged or cached.
 export class ApiError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
@@ -37,7 +40,7 @@ export function validateSchema(value,schema){
  if(type==='object'){if((schema.required||[]).some(k=>!(k in value))||schema.additionalProperties===false&&Object.keys(value).some(k=>!(k in schema.properties)))throw new ApiError(502,'invalid_ai_response');return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,validateSchema(v,schema.properties[k])]));}
  return value;
 }
-export function validateFilters(value,schema){const clean=validateSchema(value,schema);for(const rule of Object.values(clean.distanceRules||{}))if(rule.minKm!==null&&rule.maxKm!==null&&rule.minKm>rule.maxKm)throw new ApiError(502,'invalid_ai_response');if(clean.potentialBuildingLand)clean.requireEnvelope=clean.requireUnbuilt=true;return clean;}
+export function validateFilters(value,schema){const clean=validateSchema(value,schema);for(const rule of Object.values(clean.distanceRules||{}))if(rule.minKm!==null&&rule.maxKm!==null&&rule.minKm>rule.maxKm)throw new ApiError(502,'invalid_ai_response');const site=clean.siteCriteria||{};if(site.parcelMinAreaM2!=null&&site.parcelMaxAreaM2!=null&&site.parcelMinAreaM2>site.parcelMaxAreaM2)throw new ApiError(502,'invalid_ai_response');if((clean.groups||[]).some(x=>(clean.excludeGroups||[]).includes(x))||(clean.statuses||[]).some(x=>(clean.excludeStatuses||[]).includes(x)))throw new ApiError(502,'invalid_ai_response');if(clean.potentialBuildingLand)clean.requireEnvelope=clean.requireUnbuilt=true;return clean;}
 export function cleanInput(payload) {
   if (!payload || typeof payload.query !== 'string' || !payload.query.trim() || payload.query.length > 1200) throw new ApiError(400, 'invalid_query');
   const c = payload.context ?? {};
@@ -46,7 +49,7 @@ export function cleanInput(payload) {
   return { query: payload.query.trim(), context: {
     scope: String(c.scope || 'Nederland').slice(0, 100), interfaceLanguage: ['en', 'nl', 'de'].includes(c.interfaceLanguage) ? c.interfaceLanguage : 'en',
     sampledPlanFeatures: (Array.isArray(c.sampledPlanFeatures) ? c.sampledPlanFeatures : []).slice(0, 8).filter(x => x && typeof x === 'object').map(x => ({ designation: String(x.designation || '').slice(0, 100), group: String(x.group || '').slice(0, 40) })),
-    nearbyFeatureCounts: Object.fromEntries(Object.entries(counts).filter(([k,v]) => ['camping','towns','industry','roads','station','park','sports','cemetery','swimming_pool','marina'].includes(k) && Number.isFinite(v)).map(([k,v]) => [k, Math.max(0, Math.min(3000, Math.trunc(v)))])),
+    nearbyFeatureCounts: Object.fromEntries(Object.entries(counts).filter(([k,v]) => ['camping','towns','industry','roads','station','park','sports','cemetery','swimming_pool','marina','hospital','allotments','recreation_area'].includes(k) && Number.isFinite(v)).map(([k,v]) => [k, Math.max(0, Math.min(3000, Math.trunc(v)))])),
     nearbyExamples: (Array.isArray(c.nearbyExamples) ? c.nearbyExamples : []).filter(x => typeof x === 'string').slice(0, 6).map(x => x.slice(0, 80))
   } };
 }
@@ -85,28 +88,43 @@ async function readBody(request, limit) {
   try { const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; } return JSON.parse(new TextDecoder().decode(bytes)); }
   catch { throw new ApiError(400, 'invalid_request'); }
 }
-async function acquire(env, user, leaseMs=130000) {
+async function acquire(env, user, leaseMs=130000, requestLimit=12, errorCode='request_limit') {
   const now = Date.now(), lease = now + leaseMs;
   const result = await env.DB.prepare(`INSERT INTO ai_usage (user_id, window_start, requests, busy_until) VALUES (?, ?, 1, ?)
     ON CONFLICT(user_id) DO UPDATE SET window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END,
       requests = CASE WHEN window_start < ? THEN 1 ELSE requests + 1 END, busy_until = ?
-    WHERE busy_until < ? AND (window_start < ? OR requests < 12)`).bind(user, now, lease, now-300000, now, now-300000, lease, now, now-300000).run();
-  if (!result.meta.changes) throw new ApiError(429, 'request_limit');
+    WHERE busy_until < ? AND (window_start < ? OR requests < ?)`).bind(user, now, lease, now-300000, now, now-300000, lease, now, now-300000,requestLimit).run();
+  if (!result.meta.changes) throw new ApiError(429, errorCode);
   return lease;
 }
-async function storedDSOKey(env,user){
- const row=await env.DB.prepare('SELECT ciphertext, iv FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first();if(!row)return null;
- const value=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(row.iv),additionalData:encoder.encode(`planview:v1:${user}:dso`)},await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY),decode(row.ciphertext));return new TextDecoder().decode(value);
+const publicRoutingUsage='__planview_global_osrm__';
+async function acquirePublicRouting(env){
+  const start=Date.now(),lease=start+25000;
+  const result=await env.DB.prepare(`INSERT INTO ai_usage (user_id, window_start, requests, busy_until) VALUES (?, ?, 0, ?)
+    ON CONFLICT(user_id) DO UPDATE SET window_start = excluded.window_start, busy_until = excluded.busy_until
+    WHERE busy_until <= ?`).bind(publicRoutingUsage,start,lease,start).run();
+  if(!result.meta.changes)throw new ApiError(429,'routing_limit');
+  return {start,lease};
+}
+async function releasePublicRouting(env,{start,lease}){
+  // Retain 1.1 seconds between starts even if the provider replies immediately.
+  await env.DB.prepare('UPDATE ai_usage SET busy_until = ? WHERE user_id = ? AND busy_until = ?')
+    .bind(Math.max(start+1100,Date.now()),publicRoutingUsage,lease).run();
+}
+async function storedSourceKey(env,user,provider){
+ const row=await env.DB.prepare('SELECT ciphertext, iv FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,provider).first();if(!row)return null;
+ const value=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(row.iv),additionalData:encoder.encode(`planview:v1:${user}:${provider}`)},await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY),decode(row.ciphertext));return new TextDecoder().decode(value);
 }
 async function sourceSettings(env,user,payload){
- if(payload!==undefined){if(!payload||Object.keys(payload).some(k=>k!=='dso')||typeof payload.dso!=='string')throw new ApiError(400,'invalid_source_settings');const key=payload.dso.trim();
-  if(!key)await env.DB.prepare('DELETE FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').run();
-  else{if(!/^[A-Za-z0-9_.~+/-]{8,256}$/.test(key))throw new ApiError(400,'invalid_source_key');const encrypted=await encryptKey(key,user+':dso',env.PLANVIEW_CREDENTIAL_KEY);await env.DB.prepare('INSERT INTO source_credentials (user_id, provider, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(user,'dso',encrypted.ciphertext,encrypted.iv,Date.now()).run();}}
- const row=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first();return {configured:{dso:!!row,rp:false},storage:'cloud-account',capabilities:{ruleText:true,dsoGeometry:false}};
+ if(payload!==undefined){if(!payload||Array.isArray(payload)||!Object.keys(payload).length||Object.keys(payload).some(k=>!['dso','ors'].includes(k)))throw new ApiError(400,'invalid_source_settings');
+  const updates=Object.entries(payload).map(([provider,value])=>{if(typeof value!=='string')throw new ApiError(400,'invalid_source_settings');const key=value.trim();if(key&&!new RegExp(`^[A-Za-z0-9_.~+/-]{8,${provider==='ors'?2048:256}}$`).test(key))throw new ApiError(400,'invalid_source_key');return [provider,key];});
+  for(const [provider,key] of updates){if(!key)await env.DB.prepare('DELETE FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,provider).run();
+   else{const encrypted=await encryptKey(key,user+':'+provider,env.PLANVIEW_CREDENTIAL_KEY);await env.DB.prepare('INSERT INTO source_credentials (user_id, provider, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(user,provider,encrypted.ciphertext,encrypted.iv,Date.now()).run();}}}
+ const dso=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first(),ors=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'ors').first();return {configured:{dso:!!dso,rp:false,ors:!!ors},storage:'cloud-account',capabilities:{ruleText:true,dsoGeometry:false,routing:true}};
 }
 async function rulesSearch(payload,env,user,fetcher){
  let input;try{input=cleanRuleInput(payload);}catch(error){throw new ApiError(400,error.message);}
- const dso=await storedDSOKey(env,user);if(!dso)return json({state:'unavailable',error:'dso_key_missing',sources:[],coverage:{complete:false,documentsChecked:0,documentsAvailable:0,warnings:['dso_key_missing']}});
+ const dso=await storedSourceKey(env,user,'dso');if(!dso)return json({state:'unavailable',error:'dso_key_missing',sources:[],coverage:{complete:false,documentsChecked:0,documentsAvailable:0,warnings:['dso_key_missing']}});
  const lease=await acquire(env,user,200000);
  try{const corpus=await fetchPointCorpus(input.point,dso,fetcher,{query:input.query}),ranked=rankRuleSources(corpus,input.query);const response={state:ranked.sources.length?'matches':'unavailable',sources:ranked.sources,coverage:ranked.coverage,point:input.point,checkedAt:corpus.availableAt};
   if(input.planId)response.coverage.warnings.push('The clicked PDOK IMRO source may contain transitional planning rules not included in the DSO text corpus: '+input.planId);
@@ -116,20 +134,54 @@ async function rulesSearch(payload,env,user,fetcher){
   return json(response);
  }catch{throw new ApiError(502,'rule_sources_unavailable');}finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(user,lease).run();}
 }
+async function permitsSearch(payload,env,user,fetcher){
+ const input=cleanPermitQuestionInput(payload),leaseUser=user+':permit-questions';
+ const lease=await acquire(env,leaseUser,210000,12,'permit_question_limit');
+ try{
+  let key,intent=null,intentWarning=null;
+  try{key=env.PLANVIEW_CREDENTIAL_KEY?await storedKey(env,user):null;}catch{intentWarning='ai_unavailable';}
+  if(key){try{intent=await callPermitIntentOpenAI(key,input,fetcher);}catch{intentWarning='permit_intent_unavailable';}}
+  else intentWarning=intentWarning||'permit_intent_unavailable';
+  const response=await retrievePermitQuestionSources(input,fetcher,intent);
+  if(intentWarning)response.coverage.warnings.push(intentWarning);
+  response.coverage.warnings.push('permit_documents_not_loaded');
+  if(!response.sources.length)return json(response);
+  if(!key){response.coverage.warnings.push('api_key_missing');return json(response);}
+  try{response.answer=await callPermitOpenAI(key,input,response.sources,fetcher);response.state=response.answer?.citations?.length?'answered':'matches';}
+  catch{response.coverage.warnings.push('ai_unavailable');}
+  return json(response);
+ }finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(leaseUser,lease).run();}
+}
 export async function handleApi(request, env, user, config, schema, fetcher = fetch) {
   try {
     if (!user) throw new ApiError(401, 'sign_in_required');
     const path = new URL(request.url).pathname;
-    if (!env.DB || !env.PLANVIEW_CREDENTIAL_KEY) throw new ApiError(503, 'storage_unavailable');
+    if (!env.DB || (!env.PLANVIEW_CREDENTIAL_KEY && !['/api/permits/point','/api/permits/search'].includes(path))) throw new ApiError(503, 'storage_unavailable');
     if(request.method==='GET'&&path==='/api/settings')return json(await sourceSettings(env,user));
+    if(request.method==='GET'&&path==='/api/routes/status'){const row=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'ors').first();return json({configured:!!row,available:true,provider:row?'ors':'osrm',requiresKey:false,storage:'cloud-account'});}
     if (request.method === 'GET' && (path === '/api/status' || path === '/api/ai/settings')) {
       const row = await env.DB.prepare('SELECT updated_at FROM ai_credentials WHERE user_id = ?').bind(user).first();
-      return json({ app: 'planview', ...metadata, available: !!row, configured: !!row, storage: 'cloud-account', interpreterVersion: 3, updatedAt: row?.updated_at || null });
+      return json({ app: 'planview', ...metadata, available: !!row, configured: !!row, storage: 'cloud-account', interpreterVersion: 6, updatedAt: row?.updated_at || null });
     }
     if (request.method !== 'POST') throw new ApiError(404, 'unknown_endpoint');
     if (request.headers.get('Origin') !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site' || request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json') throw new ApiError(403, 'same_origin_required');
-    const payload = await readBody(request, ['/api/ai/settings','/api/settings'].includes(path) ? 2048 : 8192);
+    const payload = await readBody(request, path==='/api/settings'||path==='/api/routes'?4096:path==='/api/ai/settings'?2048:8192);
+    if(path==='/api/permits/point'){
+      const input=cleanPermitInput(payload),leaseUser=user+':permits';
+      // Internal PlanView budget, not a claimed provider quota. No external key.
+      const lease=await acquire(env,leaseUser,70000,40,'permit_request_limit');
+      try{return json(await fetchPermits(input,fetcher));}
+      finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(leaseUser,lease).run();}
+    }
+    if(path==='/api/permits/search')return await permitsSearch(payload,env,user,fetcher);
     if(path==='/api/settings')return json(await sourceSettings(env,user,payload));
+    if(path==='/api/routes'){
+      cleanRouteInput(payload);const key=await storedSourceKey(env,user,'ors');
+      const leaseUser=user+':routing',lease=await acquire(env,leaseUser,25000);
+      let publicLease;
+      try{if(!key)publicLease=await acquirePublicRouting(env);return json(await callRouting(key,payload,fetcher));}
+      finally{try{if(publicLease)await releasePublicRouting(env,publicLease);}finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(leaseUser,lease).run();}}
+    }
     if(path==='/api/rules/search')return await rulesSearch(payload,env,user,fetcher);
     if (path === '/api/ai/settings') {
       if (!payload || Object.keys(payload).length !== 1 || typeof payload.key !== 'string') throw new ApiError(400, 'invalid_api_key_format');
@@ -151,6 +203,6 @@ export async function handleApi(request, env, user, config, schema, fetcher = fe
       return json(path === '/api/ai/test' ? { ok: true, ...metadata } : result);
     } finally { await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(user, lease).run(); }
   } catch (error) {
-    return json({ error: error instanceof ApiError ? error.code : 'service_unavailable' }, error instanceof ApiError ? error.status : 503);
+    return json({ error: error instanceof ApiError||error instanceof RoutingError||error instanceof PermitError ? error.code : 'service_unavailable' }, error instanceof ApiError||error instanceof RoutingError||error instanceof PermitError ? error.status : 503);
   }
 }

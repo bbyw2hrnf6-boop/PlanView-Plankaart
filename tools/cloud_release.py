@@ -5,18 +5,23 @@ ROOT=Path(__file__).resolve().parents[1]
 PROJECT='appgprj_6ab985de2e6481918b9e1e3ccccdfcd8'
 URL='https://planview-maastricht-spatial.dannhir.chatgpt.site'
 STATE=ROOT/'.planview-cloud/state.json'
+# Plain copies remain local maintenance inputs; runtime consumes exact gzip twins.
+MAINTENANCE_ASSETS=('netherlands.json','data/netherlands_context.json','data/camping_sites.geojson','data/development_projects.geojson')
 
 def write_json(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
     temp=path.with_suffix(path.suffix+'.tmp');temp.write_text(json.dumps(value,indent=2)+'\n');temp.replace(path)
 
 def assets():
-    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'netherlands.json','search_filters.schema.json','search_config.json','.nojekyll'}]
+    root_files=[p for p in ROOT.iterdir() if p.suffix in {'.js','.css','.html'} or p.name in {'netherlands.json','netherlands.json.gz','search_filters.schema.json','search_config.json','.nojekyll','planview-demo.mp4'}]
     files=root_files+[p for folder in ['data','legend','vendor'] for p in (ROOT/folder).rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT).parts)]
     files += [p for p in (ROOT/'cloud').rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(ROOT/'cloud').parts)]
+    # Keep readable maintenance copies locally without duplicating hosted data.
+    maintenance={ROOT/name for name in MAINTENANCE_ASSETS}
+    files = [p for p in files if p not in maintenance]
     for p in files:
         if p.is_symlink():raise ValueError('Refusing symlink: '+str(p))
-        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt','.ts','.tsx','.sql','.gz'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
+        if p.suffix not in {'.js','.mjs','.css','.html','.json','.geojson','.png','.jpg','.jpeg','.webp','.svg','.woff','.woff2','.ttf','.txt','.ts','.tsx','.sql','.gz','.mp4'} and p.name!='.nojekyll':raise ValueError('Unexpected asset type: '+str(p))
     return sorted(files,key=lambda p:p.relative_to(ROOT).as_posix())
 
 def fingerprint(files):
@@ -32,18 +37,29 @@ def info():
     return files,{'project_id':PROJECT,'url':URL,'fingerprint':digest,'version':digest[:12],'file_count':len(files),'bytes':sum(p.stat().st_size for p in files),'settled':time.time()-max(p.stat().st_mtime for p in files)>30,'changed':old.get('fingerprint')!=digest,'published':old}
 
 def validate(files):
+    import gzip
+    for name in MAINTENANCE_ASSETS:
+        source=ROOT/name
+        compressed=source.with_suffix(source.suffix+'.gz')
+        if gzip.decompress(compressed.read_bytes()) != source.read_bytes():
+            raise ValueError('Compressed context asset differs from the maintained source: '+name)
     for p in files:
-        if p.parent==ROOT and p.suffix=='.js':subprocess.run(['node','--check',str(p)],check=True,capture_output=True)
+        if (p.parent==ROOT and p.suffix=='.js') or (ROOT/'cloud' in p.parents and p.suffix=='.mjs'):subprocess.run(['node','--check',str(p)],check=True,capture_output=True)
         if p.suffix in {'.json','.geojson'}:json.loads(p.read_text())
-        if p.name.endswith('.json.gz'):
+        if p.name.endswith(('.json.gz','.geojson.gz')):
             import gzip
             with gzip.open(p,'rt',encoding='utf-8') as source:json.load(source)
     for ref in re.findall(r'(?:src|href)=["\'](\./[^"\']+)["\']',(ROOT/'index.html').read_text()):
         target=ROOT/ref.split('?',1)[0]
         if not target.is_file():raise ValueError('Missing page asset: '+ref)
+    briefing=ROOT/'briefing.html'
+    for ref in re.findall(r'(?:src|href)=["\'](\./[^"\']+)["\']',briefing.read_text() if briefing.is_file() else ''):
+        target=ROOT/ref.split('?',1)[0].split('#',1)[0]
+        if target.is_file() and target not in files:raise ValueError('Briefing asset omitted from publication: '+ref)
+        if not target.exists():raise ValueError('Missing briefing asset: '+ref)
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['status','stage','record']);parser.add_argument('--checkout',type=Path);parser.add_argument('--commit');parser.add_argument('--deployment');parser.add_argument('--fingerprint');parser.add_argument('--force-initial',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['status','stage','record']);parser.add_argument('--checkout',type=Path);parser.add_argument('--commit');parser.add_argument('--deployment');parser.add_argument('--fingerprint');parser.add_argument('--force-initial',action='store_true');parser.add_argument('--resume-commit',help='Exact known source commit from a failed publication of the last staged release');args=parser.parse_args()
     files,current=info()
     if args.command=='status':print(json.dumps(current));return
     if args.command=='record':
@@ -56,7 +72,14 @@ def main():
     if manifest.get('project_id')!=PROJECT or manifest.get('d1')!='DB' or 'static' in manifest:raise ValueError('Wrong Site or unsupported build configuration')
     head=subprocess.check_output(['git','-C',str(checkout),'rev-parse','HEAD'],text=True).strip()
     old=current['published']
-    if old.get('site_commit') and head!=old['site_commit']:raise ValueError('Cloud source advanced independently. Reconcile changes before mirroring.')
+    if old.get('site_commit') and head!=old['site_commit']:
+        # A push can succeed before hosting rejects its archive. Resume only the
+        # explicitly identified clean commit carrying our last staged release.
+        local_release=ROOT/'release.json';cloud_release=checkout/'public/release.json'
+        same_release=local_release.is_file() and cloud_release.is_file() and json.loads(local_release.read_text())==json.loads(cloud_release.read_text())
+        clean=not subprocess.check_output(['git','-C',str(checkout),'status','--porcelain'],text=True).strip()
+        if args.resume_commit!=head or not re.fullmatch(r'[0-9a-f]{40}',args.resume_commit or '') or not same_release or not clean:
+            raise ValueError('Cloud source advanced independently. Reconcile changes before mirroring.')
     if not old and not args.force_initial:raise ValueError('First publication requires --force-initial')
     validate(files)
     stage=checkout/'.planview-stage'

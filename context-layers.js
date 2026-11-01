@@ -7,7 +7,7 @@
     {id:'camping',label:'Camping & Holiday Parks',icon:'leaf',group:'CONTEXT',on:false,context:true}
   ];
   layerDefs.push(...entries);
-  const files={provincial:'data/provincial_context.geojson',projects:'data/development_projects.geojson',camping:'data/camping_sites.geojson'};
+  const files={provincial:'data/provincial_context.geojson',projects:'data/development_projects.geojson.gz',camping:'data/camping_sites.geojson.gz'};
   const cache=new Map(),pending=new Map(),leaflet=new Map(),drawn=new Map(),perspectiveDrawn=new Map();
   const sameFeatures=(a,b)=>a?.length===b.length&&b.every((feature,i)=>a[i]===feature);
   const labels={urban_area:'Urban area',nature_network:'Nature network',groundwater_protection:'Groundwater protection',
@@ -24,7 +24,7 @@
   async function load(id){
     if(cache.has(id))return cache.get(id);
     if(pending.has(id))return pending.get(id);
-    const task=fetch(files[id]).then(response=>{if(!response.ok)throw new Error(`${id} data unavailable`);return response.json();})
+    const task=fetchDataJSON(files[id])
       .then(data=>{if(data.type!=='FeatureCollection'||!Array.isArray(data.features))throw new Error(`Invalid ${id} data`);
         for(const feature of data.features)feature._bounds=featureBounds(feature.geometry);
         cache.set(id,data);pending.delete(id);return data;}).catch(error=>{pending.delete(id);throw error;});
