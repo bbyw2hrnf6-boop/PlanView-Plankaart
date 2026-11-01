@@ -1,10 +1,9 @@
+import {accessAllowed} from './login-policy.mjs';
+export {accessAllowed} from './login-policy.mjs';
 export function allowedOrigins(project,extra='') {
   return new Set([`https://${project}.web.app`,`https://${project}.firebaseapp.com`,...extra.split(',').map(s=>s.trim()).filter(Boolean)].filter(s=>{try{return new URL(s).origin===s&&s.startsWith('https://');}catch{return false;}}));
 }
-export function accessAllowed(token,emails) {
-  return token?.email_verified===true&&new Set(emails.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)).has(String(token.email||'').toLowerCase());
-}
-export function createGateway({verifyToken,allowedEmails,origins,engine,environment,config,schema}) {
+export function createGateway({verifyToken,allowedEmails,testUserUid=()=>'',origins,engine,environment,config,schema}) {
   return async function gateway(req,res) {
     res.set('Cache-Control','private, no-store');res.set('X-Content-Type-Options','nosniff');res.set('Vary','Origin');
     const origin=req.get('origin');
@@ -17,7 +16,7 @@ export function createGateway({verifyToken,allowedEmails,origins,engine,environm
     const match=/^Bearer ([A-Za-z0-9_.-]+)$/.exec(req.get('authorization')||'');
     if(!match)return res.status(401).json({error:'sign_in_required'});
     let token;try{token=await verifyToken(match[1]);}catch{return res.status(401).json({error:'sign_in_required'});}
-    if(!accessAllowed(token,allowedEmails()))return res.status(403).json({error:'account_not_allowed'});
+    if(!accessAllowed(token,allowedEmails(),testUserUid()))return res.status(403).json({error:'account_not_allowed'});
     const path=req.path;
     if(!/^\/api\/[a-z/-]+$/.test(path))return res.status(404).json({error:'unknown_endpoint'});
     const body=req.method==='POST'?req.rawBody:null;

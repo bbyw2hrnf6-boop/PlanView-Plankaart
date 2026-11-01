@@ -8,7 +8,7 @@ Stand: 1. November 2026. Verbindlicher Quellcode ist dieser Git-Checkout `Intera
 - Projektkonsole: https://console.firebase.google.com/project/planview-ecf9b/overview
 - Spätere Hosting-Adresse: https://planview-ecf9b.web.app/ — erst nach erfolgreicher Veröffentlichung live.
 - Hosting, Node.js-22-Function `planviewApi` in `europe-west1`, Google-Anmeldung und Firestore-Anbindung vorbereitet.
-- Backend-Zugriff zunächst nur für das verifizierte Google-Konto **hirsch.danny@gmx.de**. Die öffentliche Hosting-Adresse liefert die Anmeldeseite sowie öffentliche Karten-/App-Dateien; sensible APIs sind unabhängig davon geschützt. Hosting allein ist keine Zugriffssperre für die statischen Dateien.
+- Backend-Zugriff für das verifizierte Google-Konto **hirsch.danny@gmx.de** sowie den separat eingerichteten Testzugang **TestUser02**, sobald seine konkrete UID konfiguriert ist. Die öffentliche Hosting-Adresse liefert die Anmeldeseite sowie öffentliche Karten-/App-Dateien; sensible APIs sind unabhängig davon geschützt. Hosting allein ist keine Zugriffssperre für die statischen Dateien.
 - API-Schlüssel werden über die vorhandenen App-Einstellungen pro Firebase-Benutzer gespeichert: AES-GCM-verschlüsselt in Firestore. Der separate Hauptschlüssel liegt in Google Secret Manager und wird nur der Function bereitgestellt. Firestore-Regeln verbieten sämtliche direkten Browserzugriffe, auch auf verschlüsselte Schlüssel.
 - GitHub-Actions-Datei `.github/workflows/firebase-deploy.yml` vorbereitet. Anmeldung bei Google erfolgt über kurzlebige OIDC-Tokens, ohne heruntergeladene Service-Account-Schlüsseldatei und ohne OpenAI-/DSO-Keys in GitHub.
 - Lokale App, bestehende Sites-Veröffentlichung, alte Keys und Git-Historie bleiben erhalten. Firebase übernimmt den aktuellen kanonischen App-Code beim Bauen. Keys aus dem Mac oder der alten Sites-Datenbank werden nicht migriert; später in Firebase erneut eingeben.
@@ -37,7 +37,7 @@ Im Browser mit `hirsch.danny@gmx.de` anmelden und die CLI-Berechtigungen prüfen
 
 ## 3. Hauptschlüssel einmalig sicher anlegen
 
-Der Hauptschlüssel ist kein OpenAI-Key. Er verschlüsselt die später von jedem Benutzer gespeicherten Anbieter-Keys.
+**Im Projekt planview-ecf9b bereits erledigt. Den folgenden Erzeugungsschritt hier nicht erneut ausführen.** Der Hauptschlüssel ist kein OpenAI-Key. Er verschlüsselt die später von jedem Benutzer gespeicherten Anbieter-Keys. Die folgende Anleitung dient ausschließlich einer neuen, noch nicht eingerichteten Installation.
 
 ```sh
 openssl rand -base64 32 | ./firebase/node_modules/.bin/firebase functions:secrets:set PLANVIEW_CREDENTIAL_KEY --project planview-ecf9b --data-file -
@@ -48,6 +48,8 @@ Der generierte Wert geht direkt über stdin zu Secret Manager, ohne eine Datei o
 ## 4. Laufzeitrechte und erstes Deployment
 
 Die Function nutzt das dedizierte Laufzeitkonto `planview-runtime@planview-ecf9b.iam.gserviceaccount.com`. Es erhält Firestore-Lese-/Schreibrechte im Projekt und ausschließlich für `PLANVIEW_CREDENTIAL_KEY` Zugriff auf den Secret-Wert. Diese dauerhaften IAM-Rechte müssen vor Einrichtung ausdrücklich freigegeben sein. Mit Google Cloud CLI als Projektbesitzer, bei Bedarf auch in Cloud Shell:
+
+Im bestehenden Projekt sind die beiden Bindungen bereits eingerichtet. Zusätzlich ist nach ausdrücklicher Freigabe die Projektrolle `planviewTokenVerifier` mit ausschließlich `firebaseauth.users.get` an dieses Konto gebunden. Dadurch kann `verifyIdToken(token, true)` auch gesperrte Nutzer und widerrufene Sitzungen ablehnen. Diese Prüfung bleibt für beide Loginarten aktiv.
 
 ```sh
 gcloud auth login
@@ -95,6 +97,18 @@ PDOK und KOOP brauchen hierfür keinen neuen Anbieter-Key. Die lokale Codex-Anme
 
 Der im Browser sichtbare Firebase-Web-Konfigurationswert `apiKey` ist eine öffentliche Projektkennung für das Firebase-SDK. Er ist **nicht** der geheime OpenAI-/DSO-Key. Schutz entsteht durch verifizierte Anmeldung, serverseitige Freigabeliste, Firestore-Regeln und IAM; Anbieter-Keys gelangen nicht in die statischen Assets.
 
+### App-eigener Testzugang ohne Postfach
+
+Die Anmeldeseite bietet zusätzlich **TestUser02 + Passwort**. Das Konto wird von Firebase Authentication verwaltet und funktioniert geräteübergreifend; es ist kein nur im Browser gespeichertes Konto. Ein echtes E-Mail-Postfach oder Google-Konto ist nicht nötig. Firebase E-Mail/Passwort verlangt intern eine E-Mail-förmige Kennung: `testuser02@planview-ecf9b.invalid`. Die reservierte `.invalid`-Adresse dient ausschließlich dieser internen Zuordnung. Auf der Website wird nur der Benutzername eingegeben.
+
+1. Firebase Authentication → Anmeldemethode → **E-Mail-Adresse/Passwort** aktivieren; **E-Mail-Link** bleibt aus.
+2. Unter Nutzer → Nutzer hinzufügen die interne Kennung eintragen. Der Eigentümer setzt und bestätigt das Passwort selbst direkt bei Firebase. Niemals in Chat, Quellcode, Deployment-Parameter oder Git eintragen.
+3. Die von Firebase erzeugte **UID** dieses Kontos als `PLANVIEW_TEST_USER_UID` in `firebase/deployment-settings.json` eintragen und Frontend/Function gemeinsam deployen. Die UID ist eine öffentliche Kontokennung, kein Passwort. Ein leerer Wert deaktiviert den Testzugriff.
+4. Das Backend akzeptiert nur genau diese UID, die interne Kennung und den verifizierten Firebase-Anbieter `password`. Andere unbestätigte E-Mail-Konten erhalten keine Ausnahme. Der allgemeine Zugriff für das Besitzerkonto verlangt weiterhin eine bestätigte E-Mail.
+5. TestUser02 hat seinen eigenen Schlüsselbereich und eigene Nutzungslimits. OpenAI-/DSO-Keys des Besitzerkontos werden nicht geteilt. Für KI-Funktionen die gewünschten Keys auch im Testkonto über Einstellungen → Verbindungen speichern.
+
+Es gibt keine öffentliche Registrierung und keinen E-Mail-Passwortreset in unserer Oberfläche. Die interne Kennung ist kein zustellbares Postfach. Selbst falls jemand außerhalb unserer Oberfläche ein anderes Firebase-Konto erstellt, lässt ihn die serverseitige Freigabeliste nicht zu. Wird das Testkonto gelöscht und neu angelegt, ändert sich seine UID: bewusst neu freigeben; gespeicherte Keys werden nicht automatisch übertragen. Passwörter werden weder im App-Code verglichen noch in Firestore gespeichert; Firebase übernimmt die Passwortprüfung.
+
 ## 6. GitHub automatisch deployen
 
 GitHub Desktop ist wieder mit `/Users/uhorizon/Documents/ChatGPT/InteractiveMap/app` verbunden. Remote ist `bbyw2hrnf6-boop/PlanView-Plankaart`, Branch `main`. Nicht das äußere InteractiveMap-Repository und nicht `deploy/site` veröffentlichen. Vorhandene lokale Änderungen und acht ältere, noch nicht gepushte Commits sind erhalten; Änderungen vor einem Commit prüfen. Ein großer alter Veröffentlichungs-TAR unter maintenance bleibt lokal und wird ignoriert.
@@ -141,4 +155,4 @@ Lokaler Start bleibt der vorhandene Launcher auf http://127.0.0.1:4174/. Die Fir
 - https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
 
 ### Reproduzierbare Parameter
-`firebase/deployment-settings.json` enthält die öffentliche API-Freigabeliste und zusätzliche erlaubte Ursprünge. `prepare` erzeugt daraus die ignorierte `.env.planview-ecf9b` mit ausschließlich diesen zwei nicht geheimen Werten. Anbieter-Keys gehören dort nicht hinein. Die Firebase-Tokenprüfung validiert Signatur, Ablauf, Aussteller und Zielprojekt sowie gesperrte/widerrufene Sitzungen. Für die Sperrprüfung braucht das Laufzeitkonto zusätzlich die ausdrücklich freizugebende Berechtigung `firebaseauth.users.get`; dafür ist eine schmale Projektrolle `planviewTokenVerifier` vorgesehen. Die serverseitige E-Mail-Freigabeliste wird ebenfalls bei jedem API-Aufruf geprüft.
+`firebase/deployment-settings.json` enthält die öffentliche API-Freigabeliste, die konkrete Testnutzer-UID und zusätzliche erlaubte Ursprünge. `prepare` erzeugt daraus die ignorierte `.env.planview-ecf9b` mit ausschließlich diesen drei nicht geheimen Werten. Anbieter-Keys gehören dort nicht hinein. Die Firebase-Tokenprüfung validiert Signatur, Ablauf, Aussteller und Zielprojekt sowie gesperrte/widerrufene Sitzungen. Die serverseitige Kontofreigabe wird bei jedem API-Aufruf geprüft.

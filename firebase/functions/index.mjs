@@ -10,11 +10,12 @@ import {allowedOrigins,createGateway} from './gateway.mjs';
 initializeApp();
 const credentialKey=defineSecret('PLANVIEW_CREDENTIAL_KEY');
 const emails=defineString('PLANVIEW_ALLOWED_EMAILS',{default:'hirsch.danny@gmx.de'});
+const testUserUid=defineString('PLANVIEW_TEST_USER_UID',{default:''});
 const extraOrigins=defineString('PLANVIEW_EXTRA_ORIGINS',{default:''});
 const config=JSON.parse(readFileSync(new URL('./generated/search_config.json',import.meta.url)));
 const schema=JSON.parse(readFileSync(new URL('./generated/search_filters.schema.json',import.meta.url)));
 const storage=firestoreDB(getFirestore());
 export const planviewApi=onRequest({region:'europe-west1',secrets:[credentialKey],timeoutSeconds:300,memory:'512MiB',minInstances:0,maxInstances:3,concurrency:10,serviceAccount:'planview-runtime@planview-ecf9b.iam.gserviceaccount.com',invoker:'public',cors:false},async(req,res)=>{
-  const gateway=createGateway({verifyToken:token=>getAuth().verifyIdToken(token,true),allowedEmails:()=>emails.value(),origins:allowedOrigins(process.env.GCLOUD_PROJECT||JSON.parse(process.env.FIREBASE_CONFIG||'{}').projectId,extraOrigins.value()),engine:handleApi,environment:()=>({DB:storage,PLANVIEW_CREDENTIAL_KEY:credentialKey.value()}),config,schema});
+  const gateway=createGateway({verifyToken:token=>getAuth().verifyIdToken(token,true),allowedEmails:()=>emails.value(),testUserUid:()=>testUserUid.value(),origins:allowedOrigins(process.env.GCLOUD_PROJECT||JSON.parse(process.env.FIREBASE_CONFIG||'{}').projectId,extraOrigins.value()),engine:handleApi,environment:()=>({DB:storage,PLANVIEW_CREDENTIAL_KEY:credentialKey.value()}),config,schema});
   return gateway(req,res);
 });
