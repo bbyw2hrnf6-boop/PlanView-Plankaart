@@ -8,6 +8,12 @@ GENERATED=ROOT/'firebase/functions/generated'
 def prepare():
     project=json.loads((ROOT/'.firebaserc').read_text())['projects']['default']
     if not re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]',project):raise ValueError('Invalid Firebase project ID')
+    settings=json.loads((ROOT/'firebase/deployment-settings.json').read_text())
+    if set(settings)!={'PLANVIEW_ALLOWED_EMAILS','PLANVIEW_EXTRA_ORIGINS'} or not all(isinstance(v,str) for v in settings.values()):raise ValueError('Invalid public deployment settings')
+    if not settings['PLANVIEW_ALLOWED_EMAILS'].strip():raise ValueError('An explicit account allowlist is required')
+    # Non-secret deployment parameters. Never generate or read provider keys here.
+    env_file=ROOT/f'firebase/functions/.env.{project}'
+    env_file.write_text(''.join(f'{key}={json.dumps(value)}\n' for key,value in settings.items()))
     files=assets();validate(files)
     public=BUILD/'public'
     if public.exists():shutil.rmtree(public)
@@ -33,7 +39,10 @@ def prepare():
     digest=hashlib.sha256()
     for file in sorted(public.rglob('*')):
         if file.is_file():digest.update(file.relative_to(public).as_posix().encode());digest.update(hashlib.sha256(file.read_bytes()).digest())
-    (public/'firebase-release.json').write_text(json.dumps({'projectId':project,'fingerprint':digest.hexdigest(),'source':'canonical app','authentication':'Firebase Google sign-in','credentialStorage':'per-user encrypted Firestore'})+'\n')
+    backend_files=list(GENERATED.rglob('*.mjs'))+list(GENERATED.glob('*.json'))+[ROOT/name for name in ['firebase/functions/index.mjs','firebase/functions/gateway.mjs','firebase/functions/firestore-db.mjs','firebase/functions/package.json','firebase/functions/package-lock.json','firebase/deployment-settings.json','firebase/firestore.rules','firebase/firestore.indexes.json','firebase.json','.firebaserc']]
+    for file in sorted(backend_files):
+        digest.update(file.relative_to(ROOT).as_posix().encode());digest.update(hashlib.sha256(file.read_bytes()).digest())
+    (public/'firebase-release.json').write_text(json.dumps({'projectId':project,'fingerprint':digest.hexdigest(),'source':'canonical app; browser and backend','authentication':'Firebase Google sign-in','credentialStorage':'per-user encrypted Firestore'})+'\n')
     print(json.dumps({'prepared':True,'project':project,'public':str(public),'files':sum(p.is_file() for p in public.rglob('*')),'bytes':sum(p.stat().st_size for p in public.rglob('*') if p.is_file()),'fingerprint':digest.hexdigest()}))
 
 def audit():

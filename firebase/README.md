@@ -47,18 +47,24 @@ Der generierte Wert geht direkt über stdin zu Secret Manager, ohne eine Datei o
 
 ## 4. Laufzeitrechte und erstes Deployment
 
-Die Function nutzt Googles standardmäßiges Compute-Laufzeitkonto. Nach Aktivierung der nötigen APIs/erster Function-Einrichtung dessen Firestore-Recht prüfen. Mit Google Cloud CLI als Projektbesitzer, bei Bedarf auch in Cloud Shell:
+Die Function nutzt das dedizierte Laufzeitkonto `planview-runtime@planview-ecf9b.iam.gserviceaccount.com`. Es erhält Firestore-Lese-/Schreibrechte im Projekt und ausschließlich für `PLANVIEW_CREDENTIAL_KEY` Zugriff auf den Secret-Wert. Diese dauerhaften IAM-Rechte müssen vor Einrichtung ausdrücklich freigegeben sein. Mit Google Cloud CLI als Projektbesitzer, bei Bedarf auch in Cloud Shell:
 
 ```sh
 gcloud auth login
 gcloud config set project planview-ecf9b
-PLANVIEW_PROJECT_NUMBER="$(gcloud projects describe planview-ecf9b --format='value(projectNumber)')"
+gcloud iam service-accounts create planview-runtime --project=planview-ecf9b --display-name="Planview runtime"
 gcloud projects add-iam-policy-binding planview-ecf9b \
-  --member="serviceAccount:${PLANVIEW_PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:planview-runtime@planview-ecf9b.iam.gserviceaccount.com" \
   --role=roles/datastore.user --condition=None
 ```
 
-Falls das Compute-Dienstkonto noch nicht existiert: zunächst Functions im Projekt aktivieren/Deployment starten und anschließend den tatsächlichen Function-Laufzeitaccount in Google Cloud → Cloud Run Functions kontrollieren. Nicht einem ähnlich benannten fremden Account Rechte geben. Firebase CLI bindet das Secret an die Function und richtet den erforderlichen Secret-Zugriff des Laufzeitkontos ein; fehlende Berechtigung als Projektbesitzer gezielt ergänzen.
+Das Konto nur erstellen, wenn es noch nicht existiert. Nicht einem ähnlich benannten fremden Account Rechte geben. Den Zugriff auf den Hauptschlüssel ausschließlich an diesem Secret binden:
+
+```sh
+gcloud secrets add-iam-policy-binding PLANVIEW_CREDENTIAL_KEY --project=planview-ecf9b \
+  --member="serviceAccount:planview-runtime@planview-ecf9b.iam.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor --condition=None
+```
 
 Dann aus dem App-Stamm:
 
@@ -133,3 +139,6 @@ Lokaler Start bleibt der vorhandene Launcher auf http://127.0.0.1:4174/. Die Fir
 - https://firebase.google.com/docs/projects/iam/permissions
 - https://github.com/google-github-actions/auth
 - https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
+
+### Reproduzierbare Parameter
+`firebase/deployment-settings.json` enthält die öffentliche API-Freigabeliste und zusätzliche erlaubte Ursprünge. `prepare` erzeugt daraus die ignorierte `.env.planview-ecf9b` mit ausschließlich diesen zwei nicht geheimen Werten. Anbieter-Keys gehören dort nicht hinein. Die Firebase-Tokenprüfung validiert Signatur, Ablauf, Aussteller und Zielprojekt sowie gesperrte/widerrufene Sitzungen. Für die Sperrprüfung braucht das Laufzeitkonto zusätzlich die ausdrücklich freizugebende Berechtigung `firebaseauth.users.get`; dafür ist eine schmale Projektrolle `planviewTokenVerifier` vorgesehen. Die serverseitige E-Mail-Freigabeliste wird ebenfalls bei jedem API-Aufruf geprüft.

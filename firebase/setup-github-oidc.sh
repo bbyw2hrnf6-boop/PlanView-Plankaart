@@ -10,7 +10,7 @@ PROJECT_ID='planview-ecf9b'
 REPOSITORY='bbyw2hrnf6-boop/PlanView-Plankaart'
 DEPLOY_ACCOUNT="planview-github@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-RUNTIME_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+RUNTIME_ACCOUNT="planview-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
 gcloud services enable iamcredentials.googleapis.com sts.googleapis.com --project="$PROJECT_ID"
 if ! gcloud iam service-accounts describe "$DEPLOY_ACCOUNT" --project="$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam service-accounts create planview-github --display-name='Planview GitHub deployment' --project="$PROJECT_ID"
