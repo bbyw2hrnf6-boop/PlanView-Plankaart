@@ -2,6 +2,8 @@ import { fetchPointCorpus } from './rule-sources.mjs';
 import { cleanRuleInput, rankRuleSources, callRuleOpenAI } from './rule-answer.mjs';
 import { RoutingError, cleanRouteInput, callRouting } from './routes.mjs';
 import { PermitError, cleanPermitInput, fetchPermits } from './permits.mjs';
+import { RPError, cleanPlanId, fetchPlanMetadata } from './rp.mjs';
+import { DSOReferenceError, fetchPointReferences } from './dso-references.mjs';
 import { cleanPermitQuestionInput, retrievePermitQuestionSources, callPermitIntentOpenAI, callPermitOpenAI } from './permit-answer.mjs';
 // Server-only PlanView API. No prompts, keys or results are logged or cached.
 export class ApiError extends Error {
@@ -11,6 +13,8 @@ export const metadata = { model: 'gpt-6-luna', reasoning: 'high', backend: 'open
 const encoder = new TextEncoder();
 const encode = bytes => btoa(String.fromCharCode(...bytes));
 const decode = value => Uint8Array.from(atob(value), char => char.charCodeAt(0));
+const credentialOwner=(env,user)=>env.PLANVIEW_CREDENTIAL_OWNER_UID||user;
+const credentialMetadata=(env,user)=>env.PLANVIEW_CREDENTIAL_OWNER_UID?{credentialScope:'shared',canManageKeys:user===env.PLANVIEW_CREDENTIAL_OWNER_UID}:{};
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }
 });
@@ -25,6 +29,7 @@ export async function encryptKey(value, user, secret) {
   return { iv: encode(iv), ciphertext: encode(new Uint8Array(ciphertext)) };
 }
 async function storedKey(env, user) {
+  user=credentialOwner(env,user);
   const row = await env.DB.prepare('SELECT ciphertext, iv FROM ai_credentials WHERE user_id = ?').bind(user).first();
   if (!row) return null;
   const value = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decode(row.iv), additionalData: encoder.encode(`planview:v1:${user}`) }, await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY), decode(row.ciphertext));
@@ -112,15 +117,17 @@ async function releasePublicRouting(env,{start,lease}){
     .bind(Math.max(start+1100,Date.now()),publicRoutingUsage,lease).run();
 }
 async function storedSourceKey(env,user,provider){
+ user=credentialOwner(env,user);
  const row=await env.DB.prepare('SELECT ciphertext, iv FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,provider).first();if(!row)return null;
  const value=await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(row.iv),additionalData:encoder.encode(`planview:v1:${user}:${provider}`)},await cryptoKey(env.PLANVIEW_CREDENTIAL_KEY),decode(row.ciphertext));return new TextDecoder().decode(value);
 }
 async function sourceSettings(env,user,payload){
- if(payload!==undefined){if(!payload||Array.isArray(payload)||!Object.keys(payload).length||Object.keys(payload).some(k=>!['dso','ors'].includes(k)))throw new ApiError(400,'invalid_source_settings');
+ const access=credentialMetadata(env,user);user=credentialOwner(env,user);
+ if(payload!==undefined){if(!payload||Array.isArray(payload)||!Object.keys(payload).length||Object.keys(payload).some(k=>!['dso','rp','ors'].includes(k)))throw new ApiError(400,'invalid_source_settings');
   const updates=Object.entries(payload).map(([provider,value])=>{if(typeof value!=='string')throw new ApiError(400,'invalid_source_settings');const key=value.trim();if(key&&!new RegExp(`^[A-Za-z0-9_.~+/-]{8,${provider==='ors'?2048:256}}$`).test(key))throw new ApiError(400,'invalid_source_key');return [provider,key];});
   for(const [provider,key] of updates){if(!key)await env.DB.prepare('DELETE FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,provider).run();
    else{const encrypted=await encryptKey(key,user+':'+provider,env.PLANVIEW_CREDENTIAL_KEY);await env.DB.prepare('INSERT INTO source_credentials (user_id, provider, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id,provider) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(user,provider,encrypted.ciphertext,encrypted.iv,Date.now()).run();}}}
- const dso=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'dso').first(),ors=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'ors').first();return {configured:{dso:!!dso,rp:false,ors:!!ors},storage:'cloud-account',capabilities:{ruleText:true,dsoGeometry:false,routing:true}};
+ const rows=await Promise.all(['dso','rp','ors'].map(provider=>env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,provider).first()));return {configured:{dso:!!rows[0],rp:!!rows[1],ors:!!rows[2]},storage:'cloud-account',...access,capabilities:{ruleText:true,dsoReferences:true,dsoGeometry:false,rpMetadata:true,routing:true}};
 }
 async function rulesSearch(payload,env,user,fetcher){
  let input;try{input=cleanRuleInput(payload);}catch(error){throw new ApiError(400,error.message);}
@@ -156,12 +163,41 @@ export async function handleApi(request, env, user, config, schema, fetcher = fe
   try {
     if (!user) throw new ApiError(401, 'sign_in_required');
     const path = new URL(request.url).pathname;
+    const owner=credentialOwner(env,user),access=credentialMetadata(env,user);
+    if(request.method==='POST'&&['/api/ai/settings','/api/settings'].includes(path)&&access.canManageKeys===false)throw new ApiError(403,'keys_managed_centrally');
     if (!env.DB || (!env.PLANVIEW_CREDENTIAL_KEY && !['/api/permits/point','/api/permits/search'].includes(path))) throw new ApiError(503, 'storage_unavailable');
     if(request.method==='GET'&&path==='/api/settings')return json(await sourceSettings(env,user));
-    if(request.method==='GET'&&path==='/api/routes/status'){const row=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(user,'ors').first();return json({configured:!!row,available:true,provider:row?'ors':'osrm',requiresKey:false,storage:'cloud-account'});}
+    if(request.method==='GET'&&path==='/api/dso/rules'){
+      const params=new URL(request.url).searchParams;
+      if(params.size!==2||!['x','y'].every(name=>/^-?\d{1,6}(?:\.\d{1,6})?$/.test(params.get(name)||'')))throw new ApiError(400,'invalid_rule_point');
+      const point={x:Number(params.get('x')),y:Number(params.get('y'))};
+      if(point.x< -10000||point.x>310000||point.y<300000||point.y>640000)throw new ApiError(400,'invalid_rule_point');
+      const key=await storedSourceKey(env,user,'dso');if(!key)throw new ApiError(409,'dso_key_missing');
+      // Three slots allow the first three search leads to be checked together.
+      // Each has a caller-specific budget of 12 requests / five minutes.
+      let leaseUser,lease;
+      for(let slot=0;slot<3;slot++){
+        const candidate=user+':dso-references:'+slot;
+        try{lease=await acquire(env,candidate,65000,12,'dso_reference_limit');leaseUser=candidate;break;}
+        catch(error){if(!(error instanceof ApiError)||error.code!=='dso_reference_limit')throw error;}
+      }
+      if(!leaseUser)throw new ApiError(429,'dso_reference_limit');
+      try{return json(await fetchPointReferences(point,key,fetcher));}
+      finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(leaseUser,lease).run();}
+    }
+    if(request.method==='GET'&&path==='/api/rp/plan'){
+      const params=new URL(request.url).searchParams;
+      if(params.size!==1||!params.has('id'))throw new ApiError(400,'invalid_plan_id');
+      const id=cleanPlanId(params.get('id')),key=await storedSourceKey(env,user,'rp');
+      if(!key)throw new ApiError(409,'rp_key_missing');
+      const leaseUser=user+':rp',lease=await acquire(env,leaseUser,20000,40,'rp_limit');
+      try{return json(await fetchPlanMetadata(id,key,fetcher));}
+      finally{await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(leaseUser,lease).run();}
+    }
+    if(request.method==='GET'&&path==='/api/routes/status'){const row=await env.DB.prepare('SELECT updated_at FROM source_credentials WHERE user_id = ? AND provider = ?').bind(owner,'ors').first();return json({configured:!!row,available:true,provider:row?'ors':'osrm',requiresKey:false,storage:'cloud-account',...access});}
     if (request.method === 'GET' && (path === '/api/status' || path === '/api/ai/settings')) {
-      const row = await env.DB.prepare('SELECT updated_at FROM ai_credentials WHERE user_id = ?').bind(user).first();
-      return json({ app: 'planview', ...metadata, available: !!row, configured: !!row, storage: 'cloud-account', interpreterVersion: 6, updatedAt: row?.updated_at || null });
+      const row = await env.DB.prepare('SELECT updated_at FROM ai_credentials WHERE user_id = ?').bind(owner).first();
+      return json({ app: 'planview', ...metadata, available: !!row, configured: !!row, storage: 'cloud-account', ...access, interpreterVersion: 6, updatedAt: row?.updated_at || null });
     }
     if (request.method !== 'POST') throw new ApiError(404, 'unknown_endpoint');
     if (request.headers.get('Origin') !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site' || request.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/json') throw new ApiError(403, 'same_origin_required');
@@ -186,11 +222,11 @@ export async function handleApi(request, env, user, config, schema, fetcher = fe
     if (path === '/api/ai/settings') {
       if (!payload || Object.keys(payload).length !== 1 || typeof payload.key !== 'string') throw new ApiError(400, 'invalid_api_key_format');
       const value = payload.key.trim();
-      if (!value) { await env.DB.prepare('DELETE FROM ai_credentials WHERE user_id = ?').bind(user).run(); return json({ configured: false, storage: 'cloud-account' }); }
+      if (!value) { await env.DB.prepare('DELETE FROM ai_credentials WHERE user_id = ?').bind(owner).run(); return json({ configured: false, storage: 'cloud-account',...access }); }
       if (!/^sk-[A-Za-z0-9_-]{16,508}$/.test(value)) throw new ApiError(400, 'invalid_api_key_format');
-      const encrypted = await encryptKey(value, user, env.PLANVIEW_CREDENTIAL_KEY);
-      await env.DB.prepare('INSERT INTO ai_credentials (user_id, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(user, encrypted.ciphertext, encrypted.iv, Date.now()).run();
-      return json({ configured: true, storage: 'cloud-account' });
+      const encrypted = await encryptKey(value, owner, env.PLANVIEW_CREDENTIAL_KEY);
+      await env.DB.prepare('INSERT INTO ai_credentials (user_id, ciphertext, iv, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET ciphertext=excluded.ciphertext, iv=excluded.iv, updated_at=excluded.updated_at').bind(owner, encrypted.ciphertext, encrypted.iv, Date.now()).run();
+      return json({ configured: true, storage: 'cloud-account',...access });
     }
     if (path !== '/api/interpret' && path !== '/api/ai/test') throw new ApiError(404, 'unknown_endpoint');
     const input = path === '/api/ai/test' ? { query: 'Find residential zoning.', context: { interfaceLanguage: 'en' } } : payload;
@@ -203,6 +239,7 @@ export async function handleApi(request, env, user, config, schema, fetcher = fe
       return json(path === '/api/ai/test' ? { ok: true, ...metadata } : result);
     } finally { await env.DB.prepare('UPDATE ai_usage SET busy_until = 0 WHERE user_id = ? AND busy_until = ?').bind(user, lease).run(); }
   } catch (error) {
-    return json({ error: error instanceof ApiError||error instanceof RoutingError||error instanceof PermitError ? error.code : 'service_unavailable' }, error instanceof ApiError||error instanceof RoutingError||error instanceof PermitError ? error.status : 503);
+    const known=error instanceof ApiError||error instanceof RoutingError||error instanceof PermitError||error instanceof RPError||error instanceof DSOReferenceError;
+    return json({ error: known ? error.code : 'service_unavailable' }, known ? error.status : 503);
   }
 }

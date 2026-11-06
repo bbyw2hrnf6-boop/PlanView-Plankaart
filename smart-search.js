@@ -21,6 +21,26 @@
   const advanced = {drawing:false,suppressClick:false,bounds:null,rectangle:null,preview:null,start:null,overlay:null,markers:null,results:[],ticket:0,ai:false,autoRunAfterDraw:false,pending:null,contextCache:new Map(),bagCache:new Map(),envelopeTiles:new Map(),envelopeGeoTiles:new Map(),history:loadSearchHistory(),open:false,activeTab:'request',busy:false,hasSearched:false,backendStatus:null,statusCheckedAt:0,statusRequest:null,interpretation:null};
   advanced.getParcelEnvelopes = parcelEnvelopes;
   window.planviewAdvanced = advanced;
+  function searchFeedback(phase, feedback = advanced.feedback) {
+    // The outer panel survives result-card and local-filter rerenders.
+    const container = $('advanced-results-view');
+    if (!feedback?.searchId || !container || typeof window.dispatchEvent !== 'function') return;
+    if (phase === 'completed' && (!container.isConnected || feedback.container === container)) return;
+    try {
+      window.dispatchEvent(new CustomEvent('planview-search-feedback', { detail: { phase, kind: 'sites', searchId: feedback.searchId, ...(phase === 'completed' ? { outcome: feedback.outcome, resultCount: feedback.resultCount } : {}), container } }));
+      if (phase === 'completed') feedback.container = container;
+    } catch {}
+  }
+  function clearSearchFeedback() { searchFeedback('cleared'); advanced.feedback = null; }
+  function beginSearchFeedback() {
+    clearSearchFeedback();
+    try { const searchId = window.crypto?.randomUUID?.(); if (searchId) { advanced.feedback = { searchId, phase: 'started' }; searchFeedback('started'); return searchId; } } catch {}
+    return null;
+  }
+  function finishSearchFeedback(searchId, outcome, resultCount) {
+    if (!searchId || advanced.feedback?.searchId !== searchId || advanced.feedback.phase === 'completed') return;
+    Object.assign(advanced.feedback, { phase: 'completed', outcome, resultCount }); searchFeedback('completed');
+  }
   const aliases = [
     ['woongebied',/\b(woongebieden|woongebied|residential areas?|wohngebiete?)\b/i],
     ['wonen',/\b(wonen|woningbouw|woonlocaties?|residential|housing|homes?|wohnungen?|wohnen)\b/i],
@@ -524,9 +544,12 @@
     }
     const shown=new Set();for(const r of advanced.results){if(!visible(r))continue;for(const [kind,near,color] of [['camping',(spec.nearCamping||spec.insideCamping)&&r.camping,'#72e4c5'],['town',spec.nearTown&&r.town,'#9db8ff'],...spec.nearFeatures.map(type=>[type,r.nearFeatures[type],'#ffcf74'])]){if(!near||shown.has(near.item.id))continue;shown.add(near.item.id);L.circleMarker([near.item.point.lat,near.item.point.lng],{radius:5,color,weight:2,fillColor:color,fillOpacity:.9,interactive:true}).bindTooltip(`${safe(near.item.source||'PDOK TOP10NL')} · ${safe(near.item.name||near.item.id)}`).addTo(advanced.overlay);}}
     renderMarkers();updateResearchState();window.dispatchEvent(new CustomEvent('planview-search-results'));
+    if (advanced.feedback?.phase === 'completed') searchFeedback('completed');
   }
   async function checkDsoLeads(ticket,spec,status){
-    if(!window.planviewOfficialServices?.configured?.dso||!advanced.results.length)return;
+    const service=window.planviewOfficialServices;
+    const referencesReady=window.planviewRuntime?.isLocal===false?service?.ruleTextConfigured&&service?.dsoReferencesAvailable:service?.configured?.dso;
+    if(!referencesReady||!advanced.results.length)return;
     const leads=advanced.results.slice(0,3),mapStatus=status.textContent;
     for(const lead of leads)lead.dsoLoading=true;
     showResults(spec);
@@ -556,6 +579,7 @@
     if(pending){if([...$('advanced-parsed').querySelectorAll('input')].some(el=>!el.reportValidity()))return;if(window.PlanViewCriteriaUI)pending.spec.siteCriteria=window.PlanViewCriteriaUI.readSite($('advanced-parsed'));if(window.PlanViewCriteriaUI?.readEnvironment)pending.spec.environmentCriteria=window.PlanViewCriteriaUI.readEnvironment($('advanced-parsed'));const errors=criteriaErrors(pending.spec);if(errors.length){status.textContent=errors.join(' ');return;}}
     advanced.abortController?.abort();advanced.abortController=new AbortController();const signal=advanced.abortController.signal;
     const ticket=++advanced.ticket;searchProgress({phase:'preparing',completed:0,total:null,failed:0,shapeFailed:0,dsoChecked:0,dsoTotal:0,dsoFailed:0});button.disabled=true;advanced.filter='all';setSearchBusy(true);if(manualSpec||pending){advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';}advanced.hasSearched=Boolean(manualSpec||pending);setSearchTab(manualSpec||pending?'results':'request');window.dispatchEvent(new CustomEvent('planview-search-results'));if(!pending)$('advanced-parsed').hidden=true;
+    let feedbackId=null,feedbackOutcome=null;
     try{
       const rough=pending?.spec||normalize(manualSpec||localInterpret(query));
       const [sampledPlanFeatures,nearby]=await Promise.all([
@@ -570,6 +594,8 @@
       if(spec.unsupported.length)status.textContent=tr('Some conditions need manual review; map-supported criteria will still be screened.','Sommige voorwaarden moeten handmatig worden beoordeeld; de kaartcriteria worden wel gecontroleerd.','Einige Bedingungen brauchen eine manuelle Prüfung; die kartierbaren Kriterien werden trotzdem geprüft.');
       const errors=criteriaErrors(spec);if(errors.length){status.textContent=errors.join(' ');return;}
       if(!siteNeeds(spec)&&!environmentNeeds(spec)&&!spec.excludeGroups.length&&!spec.excludeStatuses.length&&!spec.groups.length&&!spec.statuses.length&&!spec.requireEnvelope&&!spec.requireUnbuilt&&!spec.nearbyHomes&&!contextNeeds(spec)){status.textContent='No searchable map criterion recognized.';return;}
+      // Preparing AI criteria is not a result search. Rate only a confirmed map screening.
+      feedbackId=beginSearchFeedback();feedbackOutcome='empty';
       const context=await loadContext(scope,spec,status);if(ticket!==advanced.ticket)return;
       if((spec.insideCamping||spec.nearCamping&&spec.distanceRules.camping.maxKm!==null)&&!context.camping.length){status.textContent=tr('No mapped campsites returned for this area. Try a smaller map view or another municipality.','Geen ingetekende campings gevonden. Kies een kleiner gebied of andere gemeente.','Keine erfassten Campingplätze gefunden. Kleineren Ausschnitt oder andere Gemeinde wählen.');return;}
       if(spec.nearTown&&spec.distanceRules.town.maxKm!==null&&!context.towns.length){status.textContent=tr('No mapped towns returned for this area. Try a larger map view.','Geen plaatsen gevonden. Kies een groter gebied.','Keine Orte gefunden. Größeren Ausschnitt wählen.');return;}for(const kind of spec.nearFeatures)if(spec.distanceRules[kind].maxKm!==null&&!context.features[kind].length){status.textContent=`${tr('No mapped','Geen ingetekend','Keine erfassten')} ${tr(...nearbyTypes[kind].label)} ${tr('found near this area. Choose a larger search area.','gevonden. Kies een groter zoekgebied.','nahe diesem Gebiet gefunden. Größeres Suchgebiet wählen.')}`;return;}
@@ -630,15 +656,17 @@
       if(spec.accommodationIntent==='accommodation'){const note=document.createElement('p');note.className='advanced-context-note';note.textContent=tr('A mapped campsite and recreation designation do not prove that tiny houses, new buildings or permanent residence are allowed. Open each linked plan and inspect use, building and accommodation rules. Current Omgevingsplan rules may supersede older Wro plans.','Een ingetekende camping of recreatiebestemming bewijst niet dat tiny houses, nieuwbouw of permanent wonen zijn toegestaan. Controleer per locatie de gekoppelde plan- en omgevingsplanregels.','Ein kartierter Campingplatz oder Erholungsgebiet beweist keine Zulässigkeit von Tiny Houses, Neubau oder Dauerwohnen. Die verlinkten Plan- und Omgevingsplan-Regeln je Ort prüfen.');$('advanced-results').prepend(note);}
       if(contextNeeds(spec)){const note=document.createElement('p');note.className='advanced-context-note';note.textContent=tr('Surroundings: PDOK TOP10NL and ProRail snapshot. Distances to mapped features are approximate. Quietness needs a separate noise check; verify legal rights in Omgevingsloket.','Omgeving: PDOK TOP10NL en ProRail. Afstanden tot kaartobjecten zijn bij benadering. Stilte vraagt een aparte geluidscontrole; controleer rechten in het Omgevingsloket.','Umgebung: PDOK TOP10NL und ProRail. Abstände zu Kartenobjekten sind Näherungen. Ruhe erfordert eine gesonderte Lärmprüfung; Baurecht im Omgevingsloket prüfen.');$('advanced-results').prepend(note);}
       if(advanced.results.length&&!window.PlanViewDesktop?.enabled)status.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
-    }catch(error){if(ticket!==advanced.ticket)return;searchProgress({phase:'failed'});console.warn('Spatial search failed',error);status.textContent=error.planviewAI?(window.planviewAIMessage?.(error.message)||tr('AI search unavailable. Check your API key in settings.','AI-zoeken niet beschikbaar. Controleer je API-sleutel in instellingen.','KI-Suche nicht verfügbar. Prüfe deinen API-Key in den Einstellungen.')):error.message==='Context feature limit reached'?tr('Too many mapped surroundings in this scope. Select one municipality or draw a smaller area.','Te veel kaartobjecten in dit gebied. Kies één gemeente of teken een kleiner gebied.','Zu viele Umgebungsobjekte in diesem Bereich. Eine Gemeinde wählen oder kleineres Gebiet markieren.'):tr('A required map or surroundings service is unavailable. No partial matches were claimed; retry or narrow the area.','Een vereiste kaartdienst is niet beschikbaar. Er worden geen onvolledige treffers geclaimd.','Ein benötigter Karten- oder Umgebungsdienst ist nicht erreichbar. Es werden keine unvollständigen Treffer behauptet.');if(manualSpec||pending){advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';}}
-    finally{if(ticket===advanced.ticket){if(['preparing','sampling','evidence'].includes(advanced.progress?.phase))searchProgress({phase:advanced.pending?'prepared':'incomplete'});button.disabled=false;setSearchBusy(false);}}
+      feedbackOutcome=failed||shapeFailed||advanced.progress?.dsoFailed||advanced.results.some(r=>r.bag?.state==='error')?'partial':advanced.results.length?'complete':'empty';
+    }catch(error){if(ticket!==advanced.ticket)return;feedbackOutcome='error';searchProgress({phase:'failed'});console.warn('Spatial search failed',error);status.textContent=error.planviewAI?(window.planviewAIMessage?.(error.message)||tr('AI search unavailable. Check your API key in settings.','AI-zoeken niet beschikbaar. Controleer je API-sleutel in instellingen.','KI-Suche nicht verfügbar. Prüfe deinen API-Key in den Einstellungen.')):error.message==='Context feature limit reached'?tr('Too many mapped surroundings in this scope. Select one municipality or draw a smaller area.','Te veel kaartobjecten in dit gebied. Kies één gemeente of teken een kleiner gebied.','Zu viele Umgebungsobjekte in diesem Bereich. Eine Gemeinde wählen oder kleineres Gebiet markieren.'):tr('A required map or surroundings service is unavailable. No partial matches were claimed; retry or narrow the area.','Een vereiste kaartdienst is niet beschikbaar. Er worden geen onvolledige treffers geclaimd.','Ein benötigter Karten- oder Umgebungsdienst ist nicht erreichbar. Es werden keine unvollständigen Treffer behauptet.');if(manualSpec||pending){advanced.results=[];advanced.overlay.clearLayers();advanced.markers?.clearLayers();$('advanced-results').innerHTML='';}}
+    finally{if(ticket===advanced.ticket){if(['preparing','sampling','evidence'].includes(advanced.progress?.phase))searchProgress({phase:advanced.pending?'prepared':'incomplete'});button.disabled=false;setSearchBusy(false);if(feedbackId&&feedbackOutcome&&!signal.aborted)finishSearchFeedback(feedbackId,feedbackOutcome,feedbackOutcome==='error'?null:advanced.results.length);}}
   }
   Object.assign(advanced,{
     setOpen,setTab:setSearchTab,refreshBackendStatus,startDrawing,cancelDrawing:()=>{advanced.autoRunAfterDraw=false;exitDrawing();advanced.suppressClick=false;},
-    cancel:()=>{advanced.abortController?.abort();advanced.ticket++;searchProgress({phase:'stopped'});$('advanced-run').disabled=false;$('advanced-status').textContent=tr('Stopped. Any shown results are partial.','Gestopt. Getoonde resultaten zijn onvolledig.','Gestoppt. Angezeigte Ergebnisse sind unvollständig.');setSearchBusy(false);},
+    cancel:()=>{clearSearchFeedback();advanced.abortController?.abort();advanced.ticket++;searchProgress({phase:'stopped'});$('advanced-run').disabled=false;$('advanced-status').textContent=tr('Stopped. Any shown results are partial.','Gestopt. Getoonde resultaten zijn onvolledig.','Gestoppt. Angezeigte Ergebnisse sind unvollständig.');setSearchBusy(false);},
     runManual:spec=>runSearch(spec),run:()=>runSearch(),openResult,redraw:()=>{if(advanced.lastSpec)showResults(advanced.lastSpec);},getScope:()=>selectedScope($('advanced-query').value),
     filterResults:value=>{advanced.filter=['all','matches','review'].includes(value)?value:'all';if(advanced.lastSpec)showResults(advanced.lastSpec);},
     clearSearch:()=>{
+      clearSearchFeedback();
       advanced.abortController?.abort();advanced.ticket++;advanced.progress=null;advanced.results=[];advanced.filter='all';advanced.lastSpec=null;advanced.lastQuery='';advanced.pending=null;advanced.interpretation=null;advanced.overlay?.clearLayers();advanced.markers?.clearLayers();advanced.hasSearched=false;
       if(advanced.preview){state.map.removeLayer(advanced.preview);advanced.preview=null;}
       if(advanced.drawing)exitDrawing();

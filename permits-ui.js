@@ -53,6 +53,24 @@
     return String(properties.identificatie || properties.identificatie_lokaal_id || selection?.parcelScreenEvidence?.parcel?.id || '').slice(0, 160);
   }
   const entryKey = selection => pointKey(selection?.point) + '|' + parcelId(selection);
+  // Only explicit document questions participate; list retrieval and local filters do not.
+  function searchFeedback(phase, feedback = model.questionFeedback) {
+    const container = model.node?.querySelector('.pv-permits-question-results');
+    if (!feedback?.searchId || !container || typeof window.dispatchEvent !== 'function') return;
+    if (phase === 'completed' && (!container.isConnected || feedback.container === container)) return;
+    try {
+      window.dispatchEvent(new CustomEvent('planview-search-feedback', { detail: { phase, kind: 'permits', searchId: feedback.searchId, ...(phase === 'completed' ? { outcome: feedback.outcome, resultCount: feedback.resultCount } : {}), container } }));
+      if (phase === 'completed') feedback.container = container;
+    } catch {}
+  }
+  function beginSearchFeedback() {
+    try { const searchId = window.crypto?.randomUUID?.(); if (searchId) { model.questionFeedback = { searchId, phase: 'started' }; searchFeedback('started'); return searchId; } } catch {}
+    return null;
+  }
+  function finishSearchFeedback(searchId, outcome, resultCount) {
+    if (!searchId || model.questionFeedback?.searchId !== searchId || model.questionFeedback.phase === 'completed' || !selectedStillMatches(model.key)) return;
+    Object.assign(model.questionFeedback, { phase: 'completed', outcome, resultCount }); searchFeedback('completed');
+  }
   function stop(cancelled = false) {
     clearTimeout(model.timeout); model.timeout = null;
     model.controller?.abort(); model.controller = null; model.request++;
@@ -63,6 +81,7 @@
     }
   }
   function stopQuestion(cancelled = false) {
+    searchFeedback('cleared'); model.questionFeedback = null;
     clearTimeout(model.questionTimeout); model.questionTimeout = null;
     model.questionController?.abort(); model.questionController = null; model.questionRequest++;
     if (model.entry?.question.loading) { model.entry.question.loading = false; model.entry.question.cancelled = cancelled; }
@@ -499,6 +518,7 @@
     if (results.response !== question.response) {
       results.replaceChildren(); if (question.response) results.append(questionResultView(question.response, question.responseQuery)); results.response = question.response;
     }
+    if (model.questionFeedback?.phase === 'completed') searchFeedback('completed');
   }
   function questionForm() {
     const question = model.entry.question, section = el('section', 'pv-permits-question');
@@ -615,6 +635,7 @@
       const source = container.querySelector(':scope > [data-pv-tab="sources"]');
       if (source) source.before(model.node); else container.append(model.node);
     }
+    if (model.questionFeedback?.phase === 'completed') searchFeedback('completed');
     model.node.hidden = window.planviewUI?.inspectorTab !== 'permits';
     window.planviewUI?.setInspectorTab(window.planviewUI.inspectorTab);
   }
@@ -656,18 +677,22 @@
     const entry = model.entry, question = entry?.question, point = model.selection?.point, key = model.key;
     const query = text(question?.query).trim();
     if (!entry || !question || !query || query.length > 1000 || !point || question.loading || !model.active || !selectedStillMatches(key)) return;
-    stopQuestion(); const request = model.questionRequest, controller = new AbortController(); model.questionController = controller;
+    stopQuestion(); const request = model.questionRequest, controller = new AbortController(), feedbackId = beginSearchFeedback(); let feedbackOutcome = null, feedbackCount = null; model.questionController = controller;
     question.loading = true; question.error = ''; question.cancelled = false; paintQuestion();
     const body = { point: { lat: Number(point.lat), lng: Number(point.lng) }, query, language: language() };
     const parcel = parcelId(model.selection); if (parcel) body.parcelId = parcel;
     model.questionTimeout = setTimeout(() => {
       if (model.questionController === controller) {
-        stopQuestion(); question.error = tr('Permit search timed out. Try a narrower question. Previous results remain available.', 'Vergunningzoekopdracht duurde te lang. Stel een gerichtere vraag. Vorige resultaten blijven beschikbaar.', 'Bauantragssuche dauerte zu lange. Frage enger eingrenzen. Vorige Ergebnisse bleiben verfügbar.'); paintQuestion();
+        // Timeout is a finished failed search; explicit cancellation has no rating.
+        clearTimeout(model.questionTimeout); model.questionTimeout = null; controller.abort(); model.questionController = null; model.questionRequest++; question.loading = false;
+        question.error = tr('Permit search timed out. Try a narrower question. Previous results remain available.', 'Vergunningzoekopdracht duurde te lang. Stel een gerichtere vraag. Vorige resultaten blijven beschikbaar.', 'Bauantragssuche dauerte zu lange. Frage enger eingrenzen. Vorige Ergebnisse bleiben verfügbar.'); paintQuestion(); finishSearchFeedback(feedbackId, 'error', null);
       }
     }, 250000);
     try {
       const response = await fetch('/api/permits/search', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
       if (!response.ok) {
+        let problem; try { problem = await response.json(); } catch {}
+        if (['weekly_search_limit', 'weekly_quota_unavailable'].includes(problem?.error) && window.planviewAIMessage) throw new Error(window.planviewAIMessage(problem.error));
         if (response.status === 401 || response.status === 403) throw new Error(tr('Sign in again to search permit publications.', 'Meld je opnieuw aan om vergunningspublicaties te doorzoeken.', 'Zum Durchsuchen der Bauanträge erneut anmelden.'));
         if (response.status === 429) throw new Error(tr('The publication service is busy. Wait a little and retry.', 'De publicatieservice is bezet. Wacht even en probeer opnieuw.', 'Der Veröffentlichungsdienst ist ausgelastet. Kurz warten und erneut versuchen.'));
         throw new Error(tr('Permit search is unavailable. Previously loaded publications and results remain available.', 'Vergunningen zoeken is niet beschikbaar. Eerder geladen publicaties en resultaten blijven beschikbaar.', 'Bauantragssuche ist nicht verfügbar. Bereits geladene Veröffentlichungen und Ergebnisse bleiben verfügbar.'));
@@ -676,11 +701,12 @@
       if (!data || !['matches', 'answered', 'unavailable'].includes(data.state) || !Array.isArray(data.sources) || !data.coverage || data.sources.some(source => !source || typeof source !== 'object' || !text(source.id))) throw new Error(tr('The publication search returned an unreadable result. Try again.', 'De publicatiezoekopdracht gaf een onleesbaar resultaat. Probeer opnieuw.', 'Die Veröffentlichungssuche lieferte ein unlesbares Ergebnis. Erneut versuchen.'));
       if (controller.signal.aborted || request !== model.questionRequest || model.entry !== entry || !selectedStillMatches(key)) return;
       question.response = data; question.responseQuery = query;
+      feedbackCount = questionSources(data).length; feedbackOutcome = data.state === 'unavailable' ? feedbackCount ? 'partial' : 'error' : !feedbackCount ? 'empty' : data.coverage.partial ? 'partial' : 'complete';
     } catch (error) {
       if (request !== model.questionRequest || model.entry !== entry || !selectedStillMatches(key)) return;
-      if (error.name !== 'AbortError') question.error = error instanceof SyntaxError ? tr('The publication search returned an unreadable result. Try again.', 'De publicatiezoekopdracht gaf een onleesbaar resultaat. Probeer opnieuw.', 'Die Veröffentlichungssuche lieferte ein unlesbares Ergebnis. Erneut versuchen.') : error.message || tr('Permit search failed.', 'Vergunningen zoeken mislukt.', 'Bauantragssuche fehlgeschlagen.');
+      if (error.name !== 'AbortError') { question.error = error instanceof SyntaxError ? tr('The publication search returned an unreadable result. Try again.', 'De publicatiezoekopdracht gaf een onleesbaar resultaat. Probeer opnieuw.', 'Die Veröffentlichungssuche lieferte ein unlesbares Ergebnis. Erneut versuchen.') : error.message || tr('Permit search failed.', 'Vergunningen zoeken mislukt.', 'Bauantragssuche fehlgeschlagen.'); feedbackOutcome = 'error'; }
     } finally {
-      if (request === model.questionRequest && model.entry === entry) { clearTimeout(model.questionTimeout); model.questionTimeout = null; model.questionController = null; question.loading = false; paintQuestion(); }
+      if (request === model.questionRequest && model.entry === entry && selectedStillMatches(key)) { clearTimeout(model.questionTimeout); model.questionTimeout = null; model.questionController = null; question.loading = false; paintQuestion(); if (feedbackOutcome) finishSearchFeedback(feedbackId, feedbackOutcome, feedbackCount); }
     }
   }
   window.planviewPermits = { render, selectionChanged, activate, cancel: () => { stop(true); stopQuestion(true); paint(); } };

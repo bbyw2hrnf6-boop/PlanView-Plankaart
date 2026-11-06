@@ -20,12 +20,17 @@ export function createGateway({verifyToken,allowedEmails,testUserUid=()=>'',orig
     const path=req.path;
     if(!/^\/api\/[a-z/-]+$/.test(path))return res.status(404).json({error:'unknown_endpoint'});
     const body=req.method==='POST'?req.rawBody:null;
-    if(body&&body.length>8192)return res.status(413).json({error:'request_too_large'});
+    const bodyLimit=path==='/api/feedback'?16384:8192;
+    if(body&&body.length>bodyLimit)return res.status(413).json({error:'request_too_large'});
+    // Keep query parameters (RP plan ID), never a client-supplied host or path.
+    const rawUrl=req.originalUrl||req.url||'';
+    const search=rawUrl.includes('?')?'?'+rawUrl.split('?').slice(1).join('?').split('#')[0]:'';
+    if(search.length>2048)return res.status(414).json({error:'request_too_large'});
     try {
       const headers=new Headers({'Origin':origin,'Sec-Fetch-Site':'same-origin'});
       if(req.method==='POST')headers.set('Content-Type',req.get('content-type')||'');
       // The validated Firebase bearer token replaces Sites identity. Never trust a client UID.
-      const request=new Request(origin+path,{method:req.method,headers,...(body?{body:new Uint8Array(body)}:{})});
+      const request=new Request(origin+path+search,{method:req.method,headers,...(body?{body:new Uint8Array(body)}:{})});
       const result=await engine(request,environment(),token.uid,config,schema);
       return res.status(result.status).type('application/json').send(await result.text());
     }catch{return res.status(503).json({error:'service_unavailable'});}

@@ -3,7 +3,7 @@
   const cloud=window.planviewRuntime?.isLocal===false;
   const entry={id:'dso',label:'DSO current plan areas',icon:'map',group:'OFFICIAL PLAN',on:false,localSource:true};
   layerDefs.splice(layerDefs.findIndex(item=>item.id==='parcels'),0,entry);
-  const service={configured:{dso:false,rp:false},ruleTextConfigured:false,pointKey:'',point:null,rules:null,rulesLoading:false,rulesError:'',rp:null,loading:false,error:'',areas:[],ticket:0,
+  const service={configured:{dso:false,rp:false},ruleTextConfigured:false,dsoReferencesAvailable:false,rpMetadataAvailable:false,sharedCredentials:false,canManageKeys:true,pointKey:'',point:null,rules:null,rulesLoading:false,rulesError:'',rp:null,rpTicket:0,rpError:'',loading:false,error:'',areas:[],ticket:0,
     leaflet:null,geojson:{type:'FeatureCollection',features:[]}};
   window.planviewOfficialServices=service;
   const $=id=>document.getElementById(id);
@@ -12,12 +12,13 @@
   const message=value=>{$('services-message').textContent=value;};
   const pointKey=p=>`${Number(p.lat).toFixed(6)},${Number(p.lng).toFixed(6)}`;
   const isCurrent=p=>state.selected&&pointKey(state.selected.point)===pointKey(p);
+  const referencesReady=()=>cloud?service.ruleTextConfigured&&service.dsoReferencesAvailable:service.configured.dso;
   const safeLink=url=>/^https:\/\//.test(url||'')?url:null;
   const officialAt=p=>{const [x,y]=wgs84ToRd(p);return `${OFFICIAL}zoeken?locatie-stelsel=RD&locatie-x=${x.toFixed(1)}&locatie-y=${y.toFixed(1)}`;};
 
   async function getJSON(url){const response=await fetch(url,{cache:'no-store',credentials:'same-origin'});const data=await response.json();if(!response.ok)throw Error(data.error||`HTTP ${response.status}`);return data;}
   function applySettings(data){
-    if(cloud){service.ruleTextConfigured=data?.configured?.dso===true;service.configured={dso:false,rp:false};entry.on=false;}
+    if(cloud){service.ruleTextConfigured=data?.configured?.dso===true;service.dsoReferencesAvailable=data?.capabilities?.dsoReferences===true;service.rpMetadataAvailable=data?.capabilities?.rpMetadata===true;service.sharedCredentials=data?.credentialScope==='shared';service.canManageKeys=data?.canManageKeys!==false;service.configured={dso:false,rp:service.rpMetadataAvailable&&data?.configured?.rp===true};entry.on=false;}
     else{service.configured=data.configured||service.configured;service.ruleTextConfigured=service.configured.dso===true;}
   }
   function cloudSettingsCopy(){
@@ -25,19 +26,40 @@
     const heading=$('services-form')?.querySelector('.services-heading .eyebrow');if(heading)heading.textContent=tr('WEB ACCOUNT CONNECTIONS','VERBINDINGEN WEBACCOUNT','VERBINDUNGEN IM WEBKONTO');
     $('services-intro').textContent=tr('Public PDOK maps and 3D need no key. Add a DSO production key for location-specific rule text research. DSO map geometries and RP V4 connections use the local Mac server.','Openbare PDOK-kaarten en 3D hebben geen sleutel nodig. Voeg een DSO-productiesleutel toe voor locatiegebonden regeltekstonderzoek. DSO-kaartgeometrieën en RP V4 gebruiken de lokale Mac-server.','Öffentliche PDOK-Karten und 3D benötigen keinen Schlüssel. Einen DSO-Produktionsschlüssel für die Regeltextrecherche am Standort hinterlegen. DSO-Kartengeometrien und RP V4 nutzen den lokalen Mac-Server.');
     const security=$('services-form')?.querySelector('.services-security');if(security)security.textContent=tr('The DSO key is stored encrypted for your signed-in web account and used only by the server for rule text research. It is never returned to this page or copied from your Mac. Leave the field blank to keep the key; use Remove to delete it.','De DSO-sleutel wordt versleuteld opgeslagen voor je aangemelde webaccount en alleen door de server gebruikt voor regeltekstonderzoek. De sleutel wordt nooit aan deze pagina teruggegeven of van je Mac gekopieerd. Laat het veld leeg om de sleutel te behouden; gebruik Verwijderen om deze te wissen.','Der DSO-Schlüssel wird für dein angemeldetes Webkonto verschlüsselt gespeichert und serverseitig für die Regeltextrecherche verwendet. Er wird weder an diese Seite zurückgegeben noch vom Mac kopiert. Feld leer lassen, um den Schlüssel zu behalten; zum Löschen Entfernen wählen.');
-    $('dso-key').disabled=false;$('dso-key').placeholder=tr('DSO key for this web account','DSO-sleutel voor dit webaccount','DSO-Schlüssel für dieses Webkonto');
+    $('dso-key').disabled=!service.canManageKeys;$('dso-key').hidden=!service.canManageKeys;$('dso-key').placeholder=tr('DSO key for this web account','DSO-sleutel voor dit webaccount','DSO-Schlüssel für dieses Webkonto');
     const dsoHelp=$('dso-key').closest('.services-row')?.querySelector('small');if(dsoHelp)dsoHelp.textContent=tr('Omgevingsdocumenten Presenteren v8 · original rule text at the selected point','Omgevingsdocumenten Presenteren v8 · oorspronkelijke regeltekst op het geselecteerde punt','Omgevingsdocumenten Presenteren v8 · Originalregeltexte am gewählten Punkt');
     const rpHelp=$('rp-key').closest('.services-row')?.querySelector('small');if(rpHelp)rpHelp.textContent=tr('Local Mac connection only · unavailable in the web version','Alleen lokale Mac-verbinding · niet beschikbaar in de webversie','Nur lokale Mac-Verbindung · in der Webversion nicht verfügbar');
     $('rp-key').disabled=true;$('remove-rp').disabled=true;$('remove-rp').hidden=true;$('remove-dso').disabled=!service.ruleTextConfigured;
     $('save-services').disabled=false;$('save-services').textContent=tr('Save for web account','Bewaar voor webaccount','Im Webkonto speichern');
     $('remove-dso').textContent=tr('Remove web DSO key','Verwijder web-DSO-sleutel','Web-DSO-Schlüssel entfernen');
+    $('save-services').hidden=!service.canManageKeys;$('remove-dso').hidden=!service.canManageKeys;
+    if(service.sharedCredentials){
+      if(heading)heading.textContent=tr('SHARED CONNECTIONS','GEDEELDE VERBINDINGEN','ZENTRALE VERBINDUNGEN');
+      $('services-intro').textContent=tr('Public maps need no key. AI and DSO rule text use the shared connections managed by the owner.','Openbare kaarten hebben geen sleutel nodig. AI en DSO-regeltekst gebruiken de gedeelde verbindingen die de eigenaar beheert.','Öffentliche Karten brauchen keinen Schlüssel. KI und DSO-Regeltexte nutzen die zentral vom Besitzer verwalteten Verbindungen.');
+      if(security)security.textContent=tr('Shared keys are encrypted on the server and never returned to the browser. Only the owner can add, replace or remove them. Changes apply to all approved users.','Gedeelde sleutels zijn op de server versleuteld en worden nooit naar de browser gestuurd. Alleen de eigenaar kan ze toevoegen, vervangen of verwijderen. Wijzigingen gelden voor alle toegelaten gebruikers.','Zentrale Schlüssel sind auf dem Server verschlüsselt und werden nie an den Browser zurückgegeben. Nur der Besitzer kann sie hinzufügen, ersetzen oder entfernen. Änderungen gelten für alle freigegebenen Nutzer.');
+      $('dso-key').placeholder=tr('Central DSO key','Centrale DSO-sleutel','Zentraler DSO-Schlüssel');
+      $('save-services').textContent=tr('Save central key','Centrale sleutel opslaan','Zentralen Schlüssel speichern');
+      $('remove-dso').textContent=tr('Remove central DSO key','Centrale DSO-sleutel verwijderen','Zentralen DSO-Schlüssel entfernen');
+    }
+    $('rp-key').hidden=!service.canManageKeys;
+    if(service.rpMetadataAvailable){
+      $('rp-key').disabled=!service.canManageKeys;
+      $('rp-key').placeholder=service.sharedCredentials?tr('Central RP V4 key','Centrale RP V4-sleutel','Zentraler RP-V4-Schlüssel'):tr('RP V4 key for this web account','RP V4-sleutel voor dit webaccount','RP-V4-Schlüssel für dieses Webkonto');
+      $('remove-rp').disabled=!service.configured.rp;$('remove-rp').hidden=!service.canManageKeys;
+      $('remove-rp').textContent=tr('Remove RP V4 key','Verwijder RP V4-sleutel','RP-V4-Schlüssel entfernen');
+      if(rpHelp)rpHelp.textContent=tr('Separate RP V4 key · metadata for the selected IMRO plan','Aparte RP V4-sleutel · metadata van het geselecteerde IMRO-plan','Separater RP-V4-Schlüssel · Metadaten des ausgewählten IMRO-Plans');
+      $('services-intro').textContent=service.sharedCredentials?tr('Public maps need no key. AI, DSO rule text and RP V4 plan metadata use the shared connections managed by the owner.','Openbare kaarten hebben geen sleutel nodig. AI, DSO-regeltekst en RP V4-plangegevens gebruiken de gedeelde verbindingen die de eigenaar beheert.','Öffentliche Karten brauchen keinen Schlüssel. KI, DSO-Regeltexte und RP-V4-Plandaten nutzen die zentral vom Besitzer verwalteten Verbindungen.'):tr('Public maps need no key. Add separate DSO and RP V4 keys for rule text and selected plan metadata. DSO map geometries use the local Mac server.','Openbare kaarten hebben geen sleutel nodig. Voeg aparte DSO- en RP V4-sleutels toe voor regeltekst en plangegevens. DSO-kaartgeometrieën gebruiken de lokale Mac-server.','Öffentliche Karten brauchen keinen Schlüssel. Separate DSO- und RP-V4-Schlüssel für Regeltexte und Plandaten hinterlegen. DSO-Kartengeometrien nutzen den lokalen Mac-Server.');
+      if(security&&!service.sharedCredentials)security.textContent=tr('Keys are stored encrypted for your signed-in account and used only by the server. Leave fields blank to keep existing keys.','Sleutels worden versleuteld opgeslagen voor je aangemelde account en alleen door de server gebruikt. Laat velden leeg om bestaande sleutels te behouden.','Schlüssel werden für dein angemeldetes Konto verschlüsselt gespeichert und nur serverseitig verwendet. Leere Felder behalten vorhandene Schlüssel.');
+    }
     const input=document.querySelector('[data-layer="dso"]');if(input){input.disabled=true;input.checked=false;input.closest('.layer-row').title=tr('DSO map geometries require the local Mac server. Rule text research is available in the Rules tab.','DSO-kaartgeometrieën vereisen de lokale Mac-server. Regeltekstonderzoek is beschikbaar op het tabblad Regels.','DSO-Kartengeometrien benötigen den lokalen Mac-Server. Die Regeltextrecherche ist im Reiter Regeln verfügbar.');}
   }
   function updateStatus(){
     if(cloud){
       cloudSettingsCopy();
       $('dso-status').textContent=service.ruleTextConfigured?tr('Encrypted web key · rule text ready','Versleutelde websleutel · regeltekst gereed','Verschlüsselter Webschlüssel · Regeltexte bereit'):tr('Web rule text key not configured','Websleutel voor regeltekst niet ingesteld','Webschlüssel für Regeltexte fehlt');
-      $('rp-status').textContent=tr('Local Mac only','Alleen lokale Mac','Nur lokal am Mac');
+      if(service.sharedCredentials)$('dso-status').textContent=service.ruleTextConfigured?tr('Central connection ready','Centrale verbinding gereed','Zentrale Verbindung bereit'):tr('Central key missing · owner setup needed','Centrale sleutel ontbreekt · eigenaar moet instellen','Zentraler Schlüssel fehlt · Besitzer muss ihn hinterlegen');
+      $('rp-status').textContent=!service.rpMetadataAvailable?tr('Local Mac only','Alleen lokale Mac','Nur lokal am Mac'):service.configured.rp?tr('Connection ready','Verbinding gereed','Verbindung bereit'):tr('Key not configured','Sleutel niet ingesteld','Schlüssel fehlt');
+      if(service.rpMetadataAvailable&&service.sharedCredentials)$('rp-status').textContent=service.configured.rp?tr('Central connection ready','Centrale verbinding gereed','Zentrale Verbindung bereit'):tr('Central key missing · owner setup needed','Centrale sleutel ontbreekt · eigenaar moet instellen','Zentraler Schlüssel fehlt · Besitzer muss ihn hinterlegen');
       const row=document.querySelector('[data-layer="dso"]')?.closest('.layer-row');if(row)row.classList.add('pv-unconfigured');showLayerState();return;
     }
     $('dso-status').textContent=service.configured.dso?tr('Configured on this device','Ingesteld op dit apparaat','Auf diesem Gerät hinterlegt'):tr('Not configured','Niet ingesteld','Nicht hinterlegt');
@@ -49,7 +71,7 @@
   function showLayerState(){
     const label=document.querySelector('[data-layer="dso"]')?.closest('.layer-row')?.querySelector('.pv-layer-state');
     if(!label)return;
-    if(cloud){label.textContent=tr('Map geometry · local Mac only','Kaartgeometrie · alleen lokale Mac','Kartengeometrie · nur lokal am Mac');label.dataset.state='off';return;}
+    if(cloud){label.textContent=service.ruleTextConfigured?tr('Rules connected · map outline unavailable','Regels verbonden · kaartomtrek niet beschikbaar','Regeln verbunden · Kartenumriss nicht verfügbar'):tr('Map outline unavailable · connections in Settings','Kaartomtrek niet beschikbaar · verbindingen in Instellingen','Kartenumriss nicht verfügbar · Verbindungen unter Einstellungen');label.dataset.state='off';return;}
     label.textContent=!service.configured.dso?tr('Key needed · settings','Sleutel nodig · instellingen','Schlüssel nötig · Einstellungen'):
       !entry.on?tr('Off','Uit','Aus'):service.loading?tr('Loading…','Laden…','Lädt…'):
       service.error?tr('Source unavailable','Bron niet beschikbaar','Quelle nicht verfügbar'):
@@ -60,23 +82,27 @@
   async function loadSettings(){
     if(cloud)updateStatus();
     try{const data=await getJSON('/api/settings');applySettings(data);
-      updateStatus();
+      updateStatus();if(service.configured.rp&&state.selected)loadRP();if(referencesReady()&&state.selected)queryPoint(state.selected.point);
     }catch{message(cloud?tr('Web connection settings could not be loaded. Sign in and try again.','Webverbindingsinstellingen konden niet worden geladen. Meld je aan en probeer opnieuw.','Web-Verbindungseinstellungen konnten nicht geladen werden. Anmelden und erneut versuchen.'):tr('Start PlanView with the Desktop launcher to manage local keys.','Start PlanView via de Desktop-starter om sleutels lokaal te beheren.','PlanView mit dem Desktop-Starter öffnen, um Schlüssel lokal zu verwalten.'));}
   }
   async function save(event){
-    event.preventDefault();const payload={};if($('dso-key').value.trim())payload.dso=$('dso-key').value.trim();if(!cloud&&$('rp-key').value.trim())payload.rp=$('rp-key').value.trim();
+    if(cloud&&!service.canManageKeys){event.preventDefault();return;}
+    event.preventDefault();const payload={};if($('dso-key').value.trim())payload.dso=$('dso-key').value.trim();if((!cloud||service.rpMetadataAvailable)&&$('rp-key').value.trim())payload.rp=$('rp-key').value.trim();
     if(!Object.keys(payload).length){message(tr('Enter a key, or use Remove to delete one.','Voer een sleutel in of gebruik Verwijderen.','Schlüssel eingeben oder mit Entfernen löschen.'));return;}
     try{const response=await fetch('/api/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw Error(data.error||'Save failed');applySettings(data);$('dso-key').value='';$('rp-key').value='';updateStatus();if(service.configured.dso&&!entry.on){entry.on=true;const input=document.querySelector('[data-layer="dso"]');if(input)input.checked=true;updateLayers();}
-      message(cloud?tr('DSO key saved encrypted for your web account. Open Rules at a selected point to search the original text.','DSO-sleutel versleuteld opgeslagen voor je webaccount. Open Regels bij een geselecteerd punt om de oorspronkelijke tekst te doorzoeken.','DSO-Schlüssel verschlüsselt im Webkonto gespeichert. Unter Regeln an einem gewählten Punkt die Originaltexte durchsuchen.'):tr('Saved locally. Select a map area to load connected sources.','Lokaal opgeslagen. Kies een gebied voor de gekoppelde bronnen.','Lokal gespeichert. Gebiet anklicken, um Quellen zu laden.'));
-      if(!cloud&&state.selected)queryPoint(state.selected.point);
+      message(cloud?tr('Connection keys saved encrypted on the server. Select a parcel to use the connected sources.','Verbindingssleutels versleuteld op de server opgeslagen. Kies een perceel voor de gekoppelde bronnen.','Verbindungsschlüssel verschlüsselt auf dem Server gespeichert. Grundstück anklicken, um die verbundenen Quellen zu nutzen.'):tr('Saved locally. Select a map area to load connected sources.','Lokaal opgeslagen. Kies een gebied voor de gekoppelde bronnen.','Lokal gespeichert. Gebiet anklicken, um Quellen zu laden.'));
+      if(referencesReady()&&state.selected){service.pointKey='';queryPoint(state.selected.point);}
+      if(service.configured.rp&&state.selected)loadRP();
       if(cloud)window.dispatchEvent(new Event('planview-rule-connections-change'));
     }catch(error){message(error.message);}
   }
   async function remove(name){
-    if(cloud?(name!=='dso'||!service.ruleTextConfigured):!service.configured[name])return;
-    try{const response=await fetch('/api/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({[name]:''})});const data=await response.json();if(!response.ok)throw Error(data.error||'Remove failed');applySettings(data);if(name==='dso'){entry.on=false;const input=document.querySelector('[data-layer="dso"]');if(input)input.checked=false;service.point=null;service.areas=[];service.geojson={type:'FeatureCollection',features:[]};syncLayer();}
-      if(cloud)$('dso-key').value='';
-      updateStatus();if(state.selected)renderDetails();message(cloud?tr('DSO key removed from your web account.','DSO-sleutel verwijderd uit je webaccount.','DSO-Schlüssel aus dem Webkonto entfernt.'):tr('Key removed from this device.','Sleutel verwijderd van dit apparaat.','Schlüssel von diesem Gerät entfernt.'));
+    if(cloud&&!service.canManageKeys)return;
+    if(cloud?(name==='dso'?!service.ruleTextConfigured:name!=='rp'||!service.configured.rp):!service.configured[name])return;
+    try{const response=await fetch('/api/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({[name]:''})});const data=await response.json();if(!response.ok)throw Error(data.error||'Remove failed');applySettings(data);if(name==='dso'){service.ticket++;service.pointKey='';service.loading=false;service.rules=null;service.rulesLoading=false;service.rulesError='';service.error='';entry.on=false;const input=document.querySelector('[data-layer="dso"]');if(input)input.checked=false;service.point=null;service.areas=[];service.geojson={type:'FeatureCollection',features:[]};syncLayer();}
+      if(name==='rp'){service.rpTicket++;service.rp=null;service.rpError='';}
+      if(cloud)$(name+'-key').value='';
+      updateStatus();if(state.selected)renderDetails();message(cloud?tr('Key removed from the server.','Sleutel van de server verwijderd.','Schlüssel vom Server entfernt.'):tr('Key removed from this device.','Sleutel verwijderd van dit apparaat.','Schlüssel von diesem Gerät entfernt.'));
       if(cloud)window.dispatchEvent(new Event('planview-rule-connections-change'));
     }catch(error){message(error.message);}
   }
@@ -112,9 +138,18 @@
     syncPerspective();showLayerState();
   }
   async function queryPoint(p){
-    if(cloud||!service.configured.dso)return;
+    if(!referencesReady())return;
     const key=pointKey(p);if(service.pointKey===key&&(service.loading||service.point))return;
     const ticket=++service.ticket;service.pointKey=key;service.point=null;service.rules=null;service.rulesLoading=false;service.rulesError='';service.rp=null;service.areas=[];service.geojson={type:'FeatureCollection',features:[]};service.error='';service.loading=true;syncLayer();if(isCurrent(p))renderDetails();
+    if(cloud){
+      service.rulesLoading=true;
+      try{const [x,y]=wgs84ToRd(p),result=await getJSON(`/api/dso/rules?x=${x.toFixed(3)}&y=${y.toFixed(3)}`);
+        if(ticket!==service.ticket)return;
+        service.rules=result;service.point={documents:(result.instruments||[]).map(item=>item.document).filter(Boolean),areas:[]};
+      }catch(error){if(ticket!==service.ticket)return;service.error=error.message;service.rulesError=error.message;}
+      finally{if(ticket===service.ticket){service.loading=false;service.rulesLoading=false;if(isCurrent(p))renderDetails();}}
+      return;
+    }
     try{
       const [x,y]=wgs84ToRd(p);const result=await getJSON(`/api/dso/point?x=${x.toFixed(3)}&y=${y.toFixed(3)}`);
       if(ticket!==service.ticket)return;service.point=result;service.loading=false;
@@ -154,7 +189,7 @@
       const detail=[broad.length?`<div class="pv-dso-label">${tr('General themes','Algemene thema’s','Allgemeine Themen')}</div><div class="pv-dso-chips">${broad.map(topic=>`<span>${esc(topic.name)}</span>`).join('')}</div>`:'',activities.length?`<div class="pv-dso-label">${tr('Mentioned activities','Genoemde activiteiten','Genannte Tätigkeiten')}</div><div class="pv-dso-chips">${activities.map(name=>`<span>${esc(name)}</span>`).join('')}</div>`:'',refs.length?`<small>${tr('Example article IDs:','Voorbeeldartikel-ID’s:','Beispielartikel-IDs:')} ${refs.map(ref=>esc(ref.article)).join(' · ')}</small>`:''].join('');
       return `<div class="pv-dso-instrument"><div class="pv-dso-instrument-title"><strong>${esc(doc.title||doc.type)}</strong><small>${esc(doc.type||'')} · ${esc(doc.authority||'DSO')}${doc.effectiveFrom?` · ${esc(doc.effectiveFrom)}`:''}</small></div>${names.length?`<div class="pv-dso-label">${tr('Named areas at this point','Benoemde gebieden op dit punt','Benannte Gebiete an diesem Punkt')}</div><div class="pv-dso-chips">${names.map(name=>`<span>${esc(name)}</span>`).join('')}</div>`:`<p class="pv-dso-muted">${tr('No named local area returned here.','Geen benoemd lokaal gebied gevonden.','Kein benanntes lokales Gebiet geliefert.')}</p>`}${specific.length?`<div class="pv-dso-label">${tr('Area-linked topics','Gebiedsgebonden thema’s','Gebietsbezogene Themen')}</div><div class="pv-dso-chips">${specific.map(topic=>`<span>${esc(topic.name)}</span>`).join('')}</div>`:''}<small>${item.specificRuleCount||0} ${tr('area-linked references','gebiedsgebonden verwijzingen','gebietsbezogene Verweise')} · ${item.authorityWideRuleCount||0} ${tr('authority-wide references','algemene verwijzingen','allgemeine Verweise')}</small><div><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${tr('Check official rules for this point','Controleer officiële regels voor dit punt','Amtliche Regeln für diesen Punkt prüfen')} ↗</a></div>${detail?`<details class="pv-dso-documents"><summary>${tr('More themes and article IDs','Meer thema’s en artikel-ID’s','Mehr Themen und Artikel-IDs')}</summary>${detail}</details>`:''}</div>`;
     };
-    return `<div class="pv-dso-review"><div class="pv-dso-review-head"><strong>${tr('Current rules at this point','Actuele regels op dit punt','Aktuelle Regeln an diesem Punkt')}</strong><span>${tr('DSO point check','DSO-puntcontrole','DSO-Punktprüfung')}</span></div><p>${tr('Mapped areas and rule references are shown separately. They are research evidence, not a construction permit or a parcel-wide decision.','Gebieden en regelverwijzingen staan apart. Dit is onderzoek, geen bouwvergunning of beoordeling voor het hele perceel.','Gebiete und Regelverweise sind getrennt dargestellt. Dies sind Recherchehinweise, keine Baugenehmigung oder Prüfung des ganzen Grundstücks.')}</p>${instruments.map(card).join('')}</div>`;
+    return `<div class="pv-dso-review"><div class="pv-dso-review-head"><strong>${tr('Current rules at this point','Actuele regels op dit punt','Aktuelle Regeln an diesem Punkt')}</strong><span>${tr('DSO point check','DSO-puntcontrole','DSO-Punktprüfung')}</span></div><p>${tr('Mapped areas and rule references are shown separately. They are research evidence, not a construction permit or a parcel-wide decision.','Gebieden en regelverwijzingen staan apart. Dit is onderzoek, geen bouwvergunning of beoordeling voor het hele perceel.','Gebiete und Regelverweise sind getrennt dargestellt. Dies sind Recherchehinweise, keine Baugenehmigung oder Prüfung des ganzen Grundstücks.')}</p>${service.rules.complete===false?`<p class="source-warning">${tr('Partial reference coverage. Some documents or point annotations could not be confirmed.','Gedeeltelijke brondekking. Sommige documenten of puntannotaties konden niet worden bevestigd.','Verweise unvollständig. Einige Dokumente oder Punktzuordnungen konnten nicht bestätigt werden.')}</p>`:''}${instruments.map(card).join('')}</div>`;
   }
   function documentRows(){
     const docs=[...(service.point?.documents||[])];const municipality=state.selected?.municipality?.code||'';
@@ -165,29 +200,38 @@
     }).join('');
   }
   function renderServiceCard(){
-    if(!state.selected||!service.configured.dso&&!service.configured.rp)return;
+    if(!state.selected||!service.configured.dso&&!service.ruleTextConfigured&&!service.configured.rp)return;
     const root=$('detail-content');if(!root)return;
-    const section=document.createElement('section');section.className='detail-section pv-services-detail';section.dataset.pvManaged='';
+    const section=document.createElement('section');section.className='detail-section pv-services-detail';section.dataset.pvManaged='';section.dataset.pvDsoContent=String(service.configured.dso||(cloud&&service.ruleTextConfigured));
     let dso='';
-    if(service.configured.dso){
+    if(service.configured.dso||(cloud&&service.ruleTextConfigured)){
       if(service.loading)dso=`<p class="pv-loading" role="status">${tr('Loading current DSO sources at this point…','Huidige DSO-bronnen op dit punt laden…','Aktuelle DSO-Quellen an diesem Punkt werden geladen…')}</p>`;
       else if(service.error)dso=`<p class="source-warning">${tr('DSO could not be loaded:','DSO kon niet worden geladen:','DSO konnte nicht geladen werden:')} ${esc(service.error)}</p>`;
       else if(service.point)dso=`${ruleSummary()}${entry.on&&service.areas.length?`<p>${tr('Purple dashed outline: the municipality-wide Omgevingsplan extent, not a parcel-specific rule boundary.','Paarse stippellijn: het gemeentebrede omgevingsplangebied, geen grens van een perceelspecifieke regel.','Violetter Umriss: das gemeindeweite Omgevingsplangebiet, keine Grenze einer grundstücksspezifischen Regel.')}</p>`:''}<details class="pv-dso-documents"><summary>${tr('All DSO documents at this point','Alle DSO-documenten op dit punt','Alle DSO-Dokumente an diesem Punkt')} · ${service.point.documents.length}</summary>${documentRows()}</details>`;
-      else dso=`<p>${tr('Select a point to load DSO documents.','Kies een punt om DSO-documenten te laden.','Punkt wählen, um DSO-Dokumente zu laden.')}</p>`;
+      else dso=`<p>${cloud?tr('Use the rule question above to search published DSO text for this point.','Gebruik de regelvraag hierboven om gepubliceerde DSO-tekst voor dit punt te doorzoeken.','Mit der Regelfrage oben veröffentlichte DSO-Texte für diesen Punkt durchsuchen.'):tr('Select a point to load DSO documents.','Kies een punt om DSO-documenten te laden.','Punkt wählen, um DSO-Dokumente zu laden.')}</p>`;
     }
-    const rp=service.configured.rp&&state.selected.primary?.properties?.plangebied?`<div class="pv-rp-note">${service.rp?`${tr('RP V4 metadata','RP V4-metadata','RP-V4-Metadaten')}: ${esc(service.rp.title||service.rp.id)} · ${esc(service.rp.status||'')}`:tr('RP V4 plan metadata loading or unavailable. PDOK plan source remains above.','RP V4-plangegevens laden of niet beschikbaar. PDOK-bron blijft hierboven staan.','RP-V4-Plandaten laden oder nicht verfügbar. Die PDOK-Quelle bleibt oben stehen.')}</div>`:'';
-    section.innerHTML=`<h3>${tr('Current DSO sources','Actuele DSO-bronnen','Aktuelle DSO-Quellen')}</h3><p class="secondary-intro">${tr('Additional official context; the PDOK designation and its IMRO source remain unchanged above. A matched document is not by itself a building permission.','Aanvullende officiële context; de PDOK-bestemming en IMRO-bron blijven hierboven staan. Een document is geen bouwtoestemming.','Zusätzlicher amtlicher Kontext; die PDOK-Festsetzung und IMRO-Quelle bleiben oben. Ein Dokument ist keine Baugenehmigung.')}</p>${dso}${rp}<a class="source-link" href="${esc(officialAt(state.selected.point))}" target="_blank" rel="noopener noreferrer">${tr('Check all rules at this location','Controleer alle regels op deze locatie','Alle Regeln an diesem Ort prüfen')} ↗</a>`;
+    const rp=service.configured.rp&&state.selected.primary?.properties?.plangebied?`<div class="pv-rp-note">${service.rp?`${tr('RP V4 metadata','RP V4-metadata','RP-V4-Metadaten')}: ${esc(service.rp.title||service.rp.id)} · ${esc(service.rp.status||'')}${service.rp.date?` · ${esc(service.rp.date)}`:''}${service.rp.endOfLegalValidity?`<br>${tr('End of legal validity reported by source','Einde rechtsgeldigheid volgens bron','Ende der Rechtsgültigkeit laut Quelle')}: ${esc(service.rp.endOfLegalValidity)}`:''}`:service.rpError?tr('RP V4 metadata unavailable. PDOK plan source remains above.','RP V4-plangegevens niet beschikbaar. De PDOK-bron blijft hierboven staan.','RP-V4-Plandaten nicht verfügbar. Die PDOK-Quelle bleibt oben stehen.'):tr('Loading RP V4 plan metadata…','RP V4-plangegevens laden…','RP-V4-Plandaten werden geladen…')}</div>`:'';
+    section.innerHTML=`<h3>${service.configured.dso?tr('Current DSO sources','Actuele DSO-bronnen','Aktuelle DSO-Quellen'):tr('RP V4 plan metadata','RP V4-plangegevens','RP-V4-Plandaten')}</h3><p class="secondary-intro">${tr('Additional official context; the PDOK designation and its IMRO source remain unchanged above. A matched document is not by itself a building permission.','Aanvullende officiële context; de PDOK-bestemming en IMRO-bron blijven hierboven staan. Een document is geen bouwtoestemming.','Zusätzlicher amtlicher Kontext; die PDOK-Festsetzung und IMRO-Quelle bleiben oben. Ein Dokument ist keine Baugenehmigung.')}</p>${dso}${rp}<a class="source-link" href="${esc(officialAt(state.selected.point))}" target="_blank" rel="noopener noreferrer">${tr('Check all rules at this location','Controleer alle regels op deze locatie','Alle Regeln an diesem Ort prüfen')} ↗</a>`;
     root.append(section);
   }
-  const previousUpdate=updateLayers;updateLayers=function(){previousUpdate();if(service.configured.dso&&state.selected)queryPoint(state.selected.point);syncLayer();};
+  const previousUpdate=updateLayers;updateLayers=function(){if(cloud){entry.on=false;const input=document.querySelector('[data-layer="dso"]');if(input)input.checked=false;}previousUpdate();if(service.configured.dso&&state.selected)queryPoint(state.selected.point);syncLayer();};
   const previousPerspective=initPerspective;initPerspective=async function(){await previousPerspective();syncPerspective();};
   const previousRender=renderDetails;renderDetails=function(){previousRender();renderServiceCard();};
-  const previousSelect=selectPoint;selectPoint=async function(p){const result=previousSelect(p);service.ticket++;service.pointKey='';service.point=null;service.rules=null;service.rulesLoading=false;service.rulesError='';service.rp=null;service.areas=[];service.geojson={type:'FeatureCollection',features:[]};syncLayer();if(service.configured.dso)queryPoint(p);
+  async function loadRP(){
+    const selected=state.selected,id=selected?.primary?.properties?.plangebied;
+    if(!service.configured.rp||!id)return;
+    const ticket=++service.rpTicket;service.rp=null;service.rpError='';renderDetails();
+    try{const data=await getJSON(`/api/rp/plan?id=${encodeURIComponent(id)}`);
+      if(ticket!==service.rpTicket||state.selected!==selected)return;
+      service.rp=data;renderDetails();
+    }catch{if(ticket!==service.rpTicket||state.selected!==selected)return;service.rpError='unavailable';renderDetails();}
+  }
+  const previousSelect=selectPoint;selectPoint=async function(p){const result=previousSelect(p);service.ticket++;service.pointKey='';service.point=null;service.rules=null;service.rulesLoading=false;service.rulesError='';service.rpTicket++;service.rp=null;service.rpError='';service.areas=[];service.geojson={type:'FeatureCollection',features:[]};syncLayer();if(service.configured.dso)queryPoint(p);
     await result;if(!isCurrent(p))return;
-    const id=state.selected?.primary?.properties?.plangebied;
-    if(service.configured.rp&&id){try{service.rp=await getJSON(`/api/rp/plan?id=${encodeURIComponent(id)}`);if(isCurrent(p))renderDetails();}catch{/* PDOK remains the source when RP V4 has no record. */}}
+    if(cloud&&referencesReady())queryPoint(p);
+    await loadRP();
   };
-  service.reviewSelectedPoint=()=>{if(!state.selected)return;document.querySelector('.pv-inspector-tabs [data-tab="rules"]')?.click();if(!service.rules&&!service.rulesLoading&&service.configured.dso)queryPoint(state.selected.point);document.querySelector('.pv-dso-review,.pv-dso-loading')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});};
+  service.reviewSelectedPoint=()=>{if(!state.selected)return;document.querySelector('.pv-inspector-tabs [data-tab="rules"]')?.click();if(!service.rules&&!service.rulesLoading&&referencesReady())queryPoint(state.selected.point);document.querySelector('.pv-dso-review,.pv-dso-loading')?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});};
   const dialog=$('services-dialog');
   const closeDialog=()=>{dialog.hidden=true;document.body.classList.remove('services-open');if(cloud){$('dso-key').value='';$('rp-key').value='';}};
   $('services-settings').addEventListener('click',()=>{message('');dialog.hidden=false;document.body.classList.add('services-open');loadSettings();});

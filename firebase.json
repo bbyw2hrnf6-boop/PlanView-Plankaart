@@ -7,6 +7,10 @@
     "headers":[
       {"source":"**","headers":[{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"},{"key":"X-Frame-Options","value":"DENY"}]},
       {"source":"/index.html","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+      {"source":"/","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+      {"source":"**/*.js","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+      {"source":"**/*.css","headers":[{"key":"Cache-Control","value":"no-cache"}]},
+      {"source":"/firebase-release.json","headers":[{"key":"Cache-Control","value":"no-store"}]},
       {"source":"/firebase-runtime.json","headers":[{"key":"Cache-Control","value":"no-store"}]},
       {"source":"/firebase-auth.js","headers":[{"key":"Cache-Control","value":"no-cache"}]}
     ],

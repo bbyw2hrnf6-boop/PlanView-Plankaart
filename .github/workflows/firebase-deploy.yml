@@ -40,6 +40,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
       - name: Deploy matching API, rules and frontend
-        run: ./firebase/node_modules/.bin/firebase deploy --project "$PROJECT" --only functions:planview,firestore:rules,firestore:indexes,hosting --non-interactive
+        run: node --require ./firebase/buffered-uploads.cjs ./firebase/node_modules/firebase-tools/lib/bin/firebase.js deploy --project "$PROJECT" --only functions:planview,firestore:rules,firestore:indexes,hosting --non-interactive
         env:
           PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_HOSTING_UPLOAD_CONCURRENCY: '20'

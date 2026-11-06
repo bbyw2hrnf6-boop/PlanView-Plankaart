@@ -67,3 +67,59 @@ test('distance schema is recursive, range-safe and does not overwrite explicit m
  const result=await callOpenAI(key,{query:'Not quiet; near industry within 1.2km'},config,schema,fetcher);assert.deepEqual(result.distanceRules.station,{minKm:.5,maxKm:2});assert.equal(result.preferQuiet,false);assert.equal(result.avoidIndustry,false);
  goodValue.distanceRules.station.maxKm='2';await assert.rejects(()=>callOpenAI(key,{query:'x'},config,schema,fetcher));
 });
+test('central keys are owner-managed, usable by approved API callers and never returned',async()=>{
+ const e=env();e.PLANVIEW_CREDENTIAL_OWNER_UID='owner';
+ const saved=await (await run(e,'owner','/api/ai/settings',{key})).json();assert.equal(saved.canManageKeys,true);assert.equal(saved.credentialScope,'shared');
+ const status=await (await run(e,'test-user','/api/status')).json();assert.equal(status.configured,true);assert.equal(status.canManageKeys,false);assert.equal(status.credentialScope,'shared');assert.ok(!JSON.stringify(status).includes(key));
+ for(const [path,body] of [['/api/ai/settings',{key:''}],['/api/ai/settings',{key}],['/api/settings',{dso:'test-dso-key-123456'}],['/api/settings',{ors:''}]]){
+  const denied=await run(e,'test-user',path,body);assert.equal(denied.status,403);assert.deepEqual(await denied.json(),{error:'keys_managed_centrally'});
+ }
+ assert.equal((await run(e,'test-user','/api/interpret',{query:'Residential land'})).status,200);
+ assert.equal((await run(e,'owner','/api/interpret',{query:'Residential land'})).status,200);
+ const users=e.sqlite.prepare('SELECT user_id FROM ai_usage ORDER BY user_id').all().map(row=>row.user_id);assert.deepEqual(users,['owner','test-user']);
+ assert.equal(e.sqlite.prepare('SELECT count(*) n FROM ai_credentials').get().n,1);
+ await run(e,'owner','/api/ai/settings',{key:''});assert.equal((await (await run(e,'test-user','/api/status')).json()).configured,false);
+});
+test('central DSO and optional routing keys stay encrypted and are used server-side for the test user',async()=>{
+ const e=env();e.PLANVIEW_CREDENTIAL_OWNER_UID='owner';
+ await run(e,'owner','/api/settings',{dso:'shared-dso-key-123456',ors:'shared-routing-key-123456'});
+ const settings=await (await run(e,'test-user','/api/settings')).json();assert.equal(settings.configured.dso,true);assert.equal(settings.configured.ors,true);assert.equal(settings.canManageKeys,false);assert.ok(!JSON.stringify(settings).includes('shared-dso-key-123456'));
+ assert.ok(e.sqlite.prepare('SELECT * FROM source_credentials').all().every(row=>row.user_id==='owner'&&!JSON.stringify(row).includes('shared-dso-key-123456')));
+ let received=false;await run(e,'test-user','/api/rules/search',{point:{x:176000,y:318000},query:'bouwen'},async(url,options)=>{received ||= options.headers?.['x-api-key']==='shared-dso-key-123456';return new Response('{}',{status:503});});assert.equal(received,true);
+ const routing=await (await run(e,'test-user','/api/routes/status')).json();assert.equal(routing.provider,'ors');assert.equal(routing.canManageKeys,false);
+});
+test('central RP key is encrypted and owner-managed; plan lookup validates IDs and releases caller budget',async()=>{
+ const e=env();e.PLANVIEW_CREDENTIAL_OWNER_UID='owner';const id='NL.IMRO.0200.bp1253-vas1',rp='fixture-shared-rp-key';
+ const never=()=>assert.fail('no provider request');
+ assert.equal((await run(e,'test-user','/api/rp/plan?id='+id,undefined,never)).status,409);
+ assert.equal((await run(e,'test-user','/api/settings',{rp},never)).status,403);
+ assert.equal((await run(e,'owner','/api/settings',{rp},never)).status,200);
+ const settings=await (await run(e,'test-user','/api/settings',undefined,never)).json();assert.equal(settings.configured.rp,true);assert.equal(settings.capabilities.rpMetadata,true);assert.equal(settings.canManageKeys,false);assert.ok(!JSON.stringify(settings).includes(rp));
+ const row=e.sqlite.prepare('SELECT * FROM source_credentials WHERE provider=?').get('rp');assert.equal(row.user_id,'owner');assert.ok(!JSON.stringify(row).includes(rp));
+ for(const query of ['','?id=bad','?id='+id+'&id='+id,'?id='+id+'&url=https://evil.example'])assert.equal((await run(e,'test-user','/api/rp/plan'+query,undefined,never)).status,400);
+ const response=await run(e,'test-user','/api/rp/plan?id='+id,undefined,async(url,options)=>{assert.equal(options.headers['x-api-key'],rp);return Response.json({id,naam:'Plan',planstatusInfo:{planstatus:'vastgesteld'}});});
+ assert.equal(response.status,200);assert.equal((await response.json()).status,'vastgesteld');
+ const usage=e.sqlite.prepare('SELECT * FROM ai_usage').get();assert.equal(usage.user_id,'test-user:rp');assert.equal(usage.busy_until,0);
+ await run(e,'test-user','/api/rp/plan?id='+id,undefined,async()=>new Response('{}',{status:503}));assert.equal(e.sqlite.prepare('SELECT busy_until FROM ai_usage').get().busy_until,0);
+ assert.equal((await run(e,'test-user','/api/settings',{rp:''},never)).status,403);
+ await run(e,'owner','/api/settings',{rp:''},never);assert.equal((await (await run(e,'test-user','/api/settings',undefined,never)).json()).configured.rp,false);
+});
+test('central DSO references use the owner key for guest requests, validate coordinates and allow three bounded parallel leads',async()=>{
+ const e=env();e.PLANVIEW_CREDENTIAL_OWNER_UID='owner';const dso='fixture-central-dso-connection',path='/api/dso/rules?x=151992.1&y=390799.4',never=()=>assert.fail('no provider call');
+ assert.equal((await run(e,'test-user',path,undefined,never)).status,409);
+ await run(e,'owner','/api/settings',{dso},never);assert.equal((await (await run(e,'test-user','/api/settings')).json()).capabilities.dsoReferences,true);
+ for(const query of ['','?x=&y=390799','?x=151992&x=151993&y=390799','?x=151992&y=10','?x=151992&y=390799&url=https://evil.example'])assert.equal((await run(e,'test-user','/api/dso/rules'+query,undefined,never)).status,400);
+ const pending=[];let ready;const started=new Promise(resolve=>ready=resolve);
+ const provider=async(url,options)=>{
+  assert.ok(url.startsWith('https://service.omgevingswet.overheid.nl/publiek/omgevingsdocumenten/api/presenteren/v8/regelingen/_zoek?'));
+  assert.equal(options.headers['x-api-key'],dso);assert.equal(options.redirect,'error');assert.deepEqual(JSON.parse(options.body).geometrie.coordinates,[151992.1,390799.4]);
+  return new Promise(resolve=>{pending.push(resolve);if(pending.length===3)ready();});
+ };
+ const requests=Array.from({length:3},()=>run(e,'test-user',path,undefined,provider));await started;
+ assert.equal((await run(e,'test-user',path,undefined,never)).status,429);
+ pending.forEach(resolve=>resolve(Response.json({_embedded:{regelingen:[]}})));
+ for(const response of await Promise.all(requests)){assert.equal(response.status,200);const data=await response.json();assert.equal(data.complete,false);assert.deepEqual(data.instruments,[]);assert.ok(!JSON.stringify(data).includes(dso));}
+ const usage=e.sqlite.prepare('SELECT user_id,busy_until FROM ai_usage').all();assert.equal(usage.length,3);assert.ok(usage.every(row=>row.user_id.startsWith('test-user:dso-references:')&&row.busy_until===0));
+ const failed=await run(e,'test-user',path,undefined,async()=>new Response(dso,{status:401}));assert.equal(failed.status,502);assert.deepEqual(await failed.json(),{error:'dso_references_unavailable'});
+ assert.ok(e.sqlite.prepare('SELECT busy_until FROM ai_usage').all().every(row=>row.busy_until===0));
+});

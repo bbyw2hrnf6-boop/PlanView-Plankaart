@@ -32,7 +32,7 @@
     const section=doc.createElement('section');section.id='routing-settings';section.className='pv-ai-settings pv-routing-settings';section.dataset.pvManaged='';
     section.innerHTML='<div class="pv-ai-heading"><div><h3 id="routing-settings-title"></h3><p id="routing-provider"></p></div><span id="routing-key-status" role="status"></span></div><p id="routing-key-intro"></p><p><a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener noreferrer">OSRM · FOSSGIS ↗</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a> · <a id="routing-fix-map" href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener noreferrer"></a></p><details id="routing-advanced"><summary id="routing-advanced-label"></summary><label id="routing-key-label" for="routing-api-key"></label><input id="routing-api-key" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="2048" aria-describedby="routing-key-help" data-pv-managed><p id="routing-key-help"></p><div class="services-actions"><button id="routing-save-key" type="button" class="services-save"></button><button id="routing-remove-key" type="button" class="services-subtle"></button></div></details><p id="routing-key-message" role="status" aria-live="polite"></p>';
     form.insertBefore(section,form.querySelector('.services-security'));
-    const $=id=>doc.getElementById(id);let configured=false,loaded=false,busy=false,message='',error=false;
+    const $=id=>doc.getElementById(id);let configured=false,loaded=false,busy=false,message='',error=false,canManageKeys=true;
     function render(){
       $('routing-settings-title').textContent=tr('Travel times','Reistijden','Reisezeiten');
       $('routing-provider').textContent=configured?'openrouteservice · HeiGIT':'OSRM · OpenStreetMap · FOSSGIS';
@@ -46,13 +46,14 @@
       $('routing-save-key').textContent=tr('Save routing key','Bewaar routesleutel','Routing-Schlüssel speichern');
       $('routing-remove-key').textContent=tr('Use without key','Zonder sleutel gebruiken','Ohne Schlüssel nutzen');
       $('routing-save-key').disabled=busy;$('routing-remove-key').disabled=busy||!configured;$('routing-api-key').disabled=busy;
+      $('routing-advanced').hidden=!canManageKeys;
       $('routing-key-message').classList.toggle('pv-loading',busy);section.setAttribute('aria-busy',String(busy));
       $('routing-key-message').textContent=message|| (busy?tr('Updating connection…','Verbinding bijwerken…','Verbindung wird aktualisiert…'):'');$('routing-key-message').dataset.error=String(error);
     }
     const explain=code=>code==='sign_in_required'?tr('Sign in to save a key for your web account.','Meld je aan om een sleutel op te slaan.','Anmelden, um einen Schlüssel im Webkonto zu speichern.'):code==='invalid_source_key'?tr('Check the key and paste the complete value from HeiGIT.','Controleer de sleutel en plak de volledige waarde van HeiGIT.','Schlüssel prüfen und vollständig von HeiGIT einfügen.'):tr('The connection settings are unavailable. Try again.','De verbindingsinstellingen zijn niet beschikbaar. Probeer opnieuw.','Verbindungseinstellungen nicht erreichbar. Erneut versuchen.');
-    async function refresh(){try{const data=await status();configured=data.configured===true;loaded=true;message='';error=false;}catch(e){loaded=false;message=explain(e.code);error=true;}render();}
+    async function refresh(){try{const data=await status();configured=data.configured===true;canManageKeys=data.canManageKeys!==false;loaded=true;message='';error=false;}catch(e){loaded=false;message=explain(e.code);error=true;}render();}
     async function save(remove=false){
-      if(busy)return;const value=$('routing-api-key').value.trim();if(!remove&&!value){message=tr('Paste your HeiGIT key first.','Plak eerst je HeiGIT-sleutel.','Zuerst deinen HeiGIT-Schlüssel einfügen.');error=true;render();return;}
+      if(busy||!canManageKeys)return;const value=$('routing-api-key').value.trim();if(!remove&&!value){message=tr('Paste your HeiGIT key first.','Plak eerst je HeiGIT-sleutel.','Zuerst deinen HeiGIT-Schlüssel einfügen.');error=true;render();return;}
       busy=true;message='';render();
       try{const data=await request('/api/settings',{payload:{ors:remove?'':value}});configured=data.configured?.ors===true;loaded=true;$('routing-api-key').value='';message=remove?tr('OSRM is ready without a key.','OSRM is klaar zonder sleutel.','OSRM ist ohne Schlüssel nutzbar.'):tr('Key saved. Open the comparison and choose a destination to calculate routes.','Sleutel opgeslagen. Open de vergelijking en kies een bestemming om routes te berekenen.','Schlüssel gespeichert. Im Vergleich ein Ziel wählen und Reisezeiten berechnen.');error=false;root.dispatchEvent(new root.Event('planview-routing-connections-change'));}
       catch(e){message=explain(e.code);error=true;}finally{busy=false;render();}

@@ -5,6 +5,7 @@
   const mobileMode=matchMedia('(max-width:900px)');
   let layersOpen = !mobileMode.matches;
   let settingsTab = 'connections';
+  const extraSettingsTabs = new Map();
   let lastFocus = null;
 
   function syncLayout() {
@@ -138,14 +139,17 @@
   }
 
   function selectSettingsTab(tab, focus = false) {
+    if (!['connections','appearance',...extraSettingsTabs.keys()].includes(tab)) return;
     settingsTab = tab;
     $('workspace-connections').hidden = tab !== 'connections';
     $('workspace-appearance').hidden = tab !== 'appearance';
+    for (const [id, entry] of extraSettingsTabs) entry.panel.hidden = tab !== id;
     document.querySelectorAll('[data-settings-tab]').forEach(button => {
       const active = button.dataset.settingsTab === tab;
       button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1;
       if (active && focus) button.focus();
     });
+    extraSettingsTabs.get(tab)?.onSelect?.();
   }
 
   function makeSettings() {
@@ -168,9 +172,19 @@
       updateThemeSelection();
     });
     $('pv-theme').addEventListener('change', updateThemeSelection);
-    tabs.querySelectorAll('button').forEach(button => {
-      button.onclick = () => selectSettingsTab(button.dataset.settingsTab);
-      button.onkeydown = e => { if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) { e.preventDefault(); selectSettingsTab(e.key === 'Home' ? 'connections' : e.key === 'End' ? 'appearance' : settingsTab === 'appearance' ? 'connections' : 'appearance', true); } };
+    // Delegation also covers optional, authenticated Settings extensions.
+    tabs.addEventListener('click', event => {
+      const button = event.target.closest('[data-settings-tab]');
+      if (button && tabs.contains(button)) selectSettingsTab(button.dataset.settingsTab);
+    });
+    tabs.addEventListener('keydown', event => {
+      if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      const buttons = [...tabs.querySelectorAll('[data-settings-tab]')];
+      const current = buttons.findIndex(button => button === event.target.closest('[data-settings-tab]'));
+      if (current < 0) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      selectSettingsTab(buttons[next].dataset.settingsTab, true);
     });
     $('services-settings').addEventListener('click', () => {
       lastFocus = document.activeElement; selectSettingsTab(settingsTab);
@@ -186,6 +200,21 @@
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });
     selectSettingsTab('connections');
+    window.PlanViewSettings = {
+      registerTab(id, label, panel, onSelect) {
+        if (!/^[a-z][a-z0-9-]{0,40}$/.test(id) || ['connections','appearance'].includes(id)) throw new Error('Invalid Settings tab');
+        if (extraSettingsTabs.has(id)) return extraSettingsTabs.get(id);
+        const button = document.createElement('button');
+        button.type = 'button'; button.id = `settings-${id}-tab`; button.dataset.settingsTab = id;
+        button.textContent = label; button.setAttribute('role','tab'); button.setAttribute('aria-controls', `workspace-${id}`);
+        button.setAttribute('aria-selected','false'); button.tabIndex = -1;
+        panel.id = `workspace-${id}`; panel.hidden = true; panel.dataset.pvManaged = '';
+        panel.setAttribute('role','tabpanel'); panel.setAttribute('aria-labelledby',button.id);
+        const entry = {button, panel, onSelect}; extraSettingsTabs.set(id, entry);
+        tabs.append(button); form.append(panel); return entry;
+      }
+    };
+    window.dispatchEvent(new Event('planview-settings-ready'));
   }
 
   function updateThemeSelection() {

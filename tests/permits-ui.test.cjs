@@ -45,14 +45,14 @@ function harness(lang = 'en') {
   document.querySelector = selector => selector === '#detail-content .detail-inner' ? container : container.querySelector(selector);
   const selection = { point: { lat: 50.85, lng: 5.69, address: 'Teststraat 1' }, parcel: { properties: { identificatie: 'NL.IMKAD.Perceel.123', perceelnummer: '123', sectie: 'A' } } };
   const state = { selected: selection, selectedPoint: selection.point }, calls = [], timers = new Map(), listeners = {};
-  let timer = 0;
-  const window = { addEventListener: (name, fn) => { listeners[name] = fn; }, planviewUI: { inspectorTab: 'summary', setInspectorTab(tab) { this.inspectorTab = tab; window.planviewPermits.activate(tab === 'permits'); } } };
-  const context = vm.createContext({ document, state, window, URL, AbortController, console, setTimeout: (fn, delay) => { fn.delay = delay; timers.set(++timer, fn); return timer; }, clearTimeout: id => timers.delete(id), fetch: (url, options) => new Promise((resolve, reject) => { calls.push({ url, options, resolve, reject }); }) });
+  let timer = 0, searchId = 0; const feedbackEvents = [];
+  const window = { crypto: { randomUUID: () => `10000000-0000-4000-8000-${String(++searchId).padStart(12, '0')}` }, dispatchEvent: event => feedbackEvents.push(event.detail), addEventListener: (name, fn) => { listeners[name] = fn; }, planviewUI: { inspectorTab: 'summary', setInspectorTab(tab) { this.inspectorTab = tab; window.planviewPermits.activate(tab === 'permits'); } } };
+  const context = vm.createContext({ document, state, window, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } }, URL, AbortController, console, setTimeout: (fn, delay) => { fn.delay = delay; timers.set(++timer, fn); return timer; }, clearTimeout: id => timers.delete(id), fetch: (url, options) => new Promise((resolve, reject) => { calls.push({ url, options, resolve, reject }); }) });
   vm.runInContext(read('permits-ui.js'), context);
   const api = window.planviewPermits;
   const get = selector => container.querySelector(selector);
   const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
-  return { api, state, document, window, calls, timers, container, get, settle, async respond(index, data, status = 200) { calls[index].resolve({ ok: status === 200, status, json: async () => data }); await settle(); }, async open() { api.render(); window.planviewUI.setInspectorTab('permits'); await settle(); }, choose(point) { api.selectionChanged(point); state.selectedPoint = point; state.selected = { point }; window.planviewUI.inspectorTab = 'summary'; api.render(); }, translate(lang) { document.documentElement.lang = lang; listeners['planview-language-change'](); } };
+  return { api, state, document, window, calls, timers, feedbackEvents, container, get, settle, async respond(index, data, status = 200) { calls[index].resolve({ ok: status === 200, status, json: async () => data }); await settle(); }, async open() { api.render(); window.planviewUI.setInspectorTab('permits'); await settle(); }, choose(point) { api.selectionChanged(point); state.selectedPoint = point; state.selected = { point }; window.planviewUI.inspectorTab = 'summary'; api.render(); }, translate(lang) { document.documentElement.lang = lang; listeners['planview-language-change'](); } };
 }
 
 test('permit tab mounts for a location with no plan and fetches only on opening', async () => {
@@ -480,4 +480,53 @@ test('later pages promote an area case using title evidence without duplicates',
  h.get('.pv-permits-view-direct').dispatch('click');
  assert.equal(h.get('.pv-permits-list').querySelectorAll('.pv-permits-case').length,1);
  assert.match(h.get('.pv-permits-list').textContent,/Address recognised in title/);
+});
+
+test('only explicitly submitted permit questions emit private result-rating lifecycle events', async () => {
+  const h = harness(); await h.open(); await h.respond(0, fixtureResponse([fixtureCase('history')]));
+  h.get('.pv-permits-view-general').dispatch('click'); h.get('.pv-permits-query').value = 'history'; h.get('.pv-permits-query').dispatch('input');
+  h.get('.pv-permits-question-example').dispatch('click'); assert.equal(h.feedbackEvents.length, 0);
+  h.get('.pv-permits-question-form').dispatch('submit'); assert.equal(h.feedbackEvents.length, 1);
+  const start = h.feedbackEvents[0]; assert.equal(start.phase, 'started'); assert.equal(start.kind, 'permits');
+  assert.equal(start.container, h.get('.pv-permits-question-results')); assert.match(start.searchId, /^10000000-0000-4000-8000-/);
+  await h.respond(1, fixtureQuestionResponse()); const complete = h.feedbackEvents.at(-1);
+  assert.equal(complete.phase, 'completed'); assert.equal(complete.searchId, start.searchId); assert.equal(complete.outcome, 'complete'); assert.equal(complete.resultCount, 1);
+  assert.equal(complete.container.isConnected, true); assert.ok(h.get('.pv-permits-answer'), 'answer is painted before rating becomes available');
+  assert.deepEqual(Object.keys(complete).sort(), ['container', 'kind', 'outcome', 'phase', 'resultCount', 'searchId']);
+  assert.equal(JSON.stringify({ ...complete, container: null }).includes('Stuwweg'), false, 'no query, source or address is broadcast');
+  h.translate('de'); const rebound = h.feedbackEvents.at(-1);
+  assert.equal(rebound.searchId, complete.searchId); assert.notEqual(rebound.container, complete.container); assert.equal(rebound.container.isConnected, true);
+  assert.equal(h.calls.length, 2, 'language change only rebinds the same result, never starts a search');
+});
+
+test('cancelled and location-stale permit searches never offer a rating for a late result', async () => {
+  for (const changeLocation of [false, true]) {
+    const h = harness(); await h.open(); await h.respond(0, fixtureResponse([]));
+    h.get('.pv-permits-question-example').dispatch('click'); h.get('.pv-permits-question-form').dispatch('submit');
+    const searchId = h.feedbackEvents[0].searchId;
+    if (changeLocation) h.choose({ lat: 51, lng: 5.8 }); else h.get('.pv-permits-question-cancel').dispatch('click');
+    await h.respond(1, fixtureQuestionResponse());
+    assert.equal(h.feedbackEvents.some(event => event.phase === 'completed' && event.searchId === searchId), false);
+    assert.equal(h.feedbackEvents.at(-1).phase, 'cleared'); assert.equal(h.calls[1].options.signal.aborted, true);
+  }
+});
+
+test('permit empty, partial, failed and timed-out searches expose their own final outcome', async () => {
+  for (const [response, status, outcome, count] of [
+    [fixtureQuestionResponse(undefined, { sources: [], answer: null, state: 'matches' }), 200, 'empty', 0],
+    [fixtureQuestionResponse(undefined, { coverage: { partial: true, warnings: [] } }), 200, 'partial', 1],
+    [{}, 503, 'error', null]
+  ]) {
+    const h = harness(); await h.open(); await h.respond(0, fixtureResponse([])); h.get('.pv-permits-question-example').dispatch('click'); h.get('.pv-permits-question-form').dispatch('submit');
+    await h.respond(1, response, status); assert.equal(h.feedbackEvents.at(-1).outcome, outcome); assert.equal(h.feedbackEvents.at(-1).resultCount, count);
+  }
+  const h = harness(); await h.open(); await h.respond(0, fixtureResponse([])); h.get('.pv-permits-question-example').dispatch('click'); h.get('.pv-permits-question-form').dispatch('submit');
+  [...h.timers.values()].find(fn => fn.delay === 250000)(); const completed = h.feedbackEvents.filter(event => event.phase === 'completed');
+  assert.equal(completed.length, 1); assert.equal(completed[0].outcome, 'error');
+  await h.respond(1, fixtureQuestionResponse()); assert.equal(h.feedbackEvents.filter(event => event.phase === 'completed').length, 1, 'transport ignoring timeout cannot replace the failed search');
+});
+
+test('missing secure random UUID leaves permit research operational without rating hooks', async () => {
+  const h = harness(); h.window.crypto = undefined; await h.open(); await h.respond(0, fixtureResponse([])); h.get('.pv-permits-question-example').dispatch('click'); h.get('.pv-permits-question-form').dispatch('submit'); await h.respond(1, fixtureQuestionResponse());
+  assert.ok(h.get('.pv-permits-answer')); assert.equal(h.feedbackEvents.length, 0);
 });

@@ -13,6 +13,24 @@
     return node;
   };
   const currentSelection = () => typeof state === 'undefined' ? null : state.selected;
+  // Optional UI lifecycle only: never send question text, addresses or source text.
+  function searchFeedback(phase, feedback = model.feedback) {
+    const container = model.node?.querySelector('.pv-rules-results');
+    if (!feedback?.searchId || !container || typeof window.dispatchEvent !== 'function') return;
+    if (phase === 'completed' && (!container.isConnected || feedback.container === container)) return;
+    try {
+      window.dispatchEvent(new CustomEvent('planview-search-feedback', { detail: { phase, kind: 'rules', searchId: feedback.searchId, ...(phase === 'completed' ? { outcome: feedback.outcome, resultCount: feedback.resultCount } : {}), container } }));
+      if (phase === 'completed') feedback.container = container;
+    } catch {} // A missing optional feedback integration must not affect research.
+  }
+  function beginSearchFeedback() {
+    try { const searchId = window.crypto?.randomUUID?.(); if (searchId) { model.feedback = { searchId, phase: 'started' }; searchFeedback('started'); return searchId; } } catch {}
+    return null;
+  }
+  function finishSearchFeedback(searchId, outcome, resultCount) {
+    if (!searchId || model.feedback?.searchId !== searchId || model.feedback.phase === 'completed' || pointKey(currentSelection()?.point) !== model.key) return;
+    Object.assign(model.feedback, { phase: 'completed', outcome, resultCount }); searchFeedback('completed');
+  }
   // Translate fixed service diagnostics only. Official titles, quotations and
   // unknown diagnostics stay verbatim so no source meaning is inferred here.
   function diagnosticText(value) {
@@ -62,6 +80,7 @@
     try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch { return null; }
   }
   function stop() {
+    searchFeedback('cleared'); model.feedback = null;
     model.abort?.abort(); model.abort = null; model.request++; model.loading = false;
   }
   function selectionChanged(point) {
@@ -180,7 +199,7 @@
     node.querySelector('.pv-rules-progress').hidden=!model.loading;
     const previous=node.querySelector('.pv-rules-previous');previous.hidden=!model.response;previous.textContent=model.response?tr('Shown result for: ','Getoond resultaat voor: ','Angezeigtes Ergebnis für: ')+model.responseQuery+(model.loading?tr(' · New question is being checked.',' · Nieuwe vraag wordt gecontroleerd.',' · Neue Frage wird geprüft.'):''):'';
     if(results._response!==model.response){results.replaceChildren();if(model.response)results.append(resultView(model.response));results._response=model.response;}
-
+    if (model.feedback?.phase === 'completed') searchFeedback('completed');
   }
   function mount(selection) {
     const section = el('section', 'detail-section pv-rules-search');
@@ -227,6 +246,7 @@
     else model.node.querySelector('.pv-rules-scope').textContent = scopeText(selection);
     const anchor = container.querySelector(':scope > .pv-rule-controls, :scope > [data-pv-tab="rules"]');
     if (model.node.parentNode !== container) { if (anchor) anchor.before(model.node); else container.append(model.node); }
+    if (model.feedback?.phase === 'completed') searchFeedback('completed');
     model.node.hidden = window.planviewUI?.inspectorTab !== 'rules';
     // Refresh tab relationships after adding our section, using the shared controller.
     if (window.planviewUI?.setInspectorTab) window.planviewUI.setInspectorTab(window.planviewUI.inspectorTab);
@@ -237,7 +257,8 @@
     let rd;
     try { rd = wgs84ToRd(model.point); } catch { rd = null; }
     if (!Array.isArray(rd) || rd.length !== 2 || !rd.every(Number.isFinite)) { model.error = tr('The selected coordinates could not be converted.', 'De geselecteerde coördinaten konden niet worden omgerekend.', 'Die gewählten Koordinaten konnten nicht umgerechnet werden.'); paintResults(); return; }
-    stop(); const request = model.request, key = model.key; model.abort = new AbortController();const abortForTimeout=model.abort;setTimeout(()=>{if(model.abort===abortForTimeout){model.error=tr('Rule search timed out. Try a narrower question.','Regelzoekopdracht duurde te lang. Stel een gerichtere vraag.','Regelsuche dauerte zu lange. Frage enger eingrenzen.');abortForTimeout.abort();model.loading=false;paintResults();}},170000);
+    stop(); const request = model.request, key = model.key, feedbackId = beginSearchFeedback(); let feedbackOutcome = null, feedbackCount = null;
+    model.abort = new AbortController();const abortForTimeout=model.abort;setTimeout(()=>{if(model.abort===abortForTimeout){model.error=tr('Rule search timed out. Try a narrower question.','Regelzoekopdracht duurde te lang. Stel een gerichtere vraag.','Regelsuche dauerte zu lange. Frage enger eingrenzen.');abortForTimeout.abort();model.loading=false;paintResults();finishSearchFeedback(feedbackId,'error',null);}},170000);
     model.loading = true; model.error = ''; paintResults();
     const body = { point: { x: rd[0], y: rd[1] }, query, language: lang() };
     const planId = text(selection?.primary?.properties?.plangebied); if (planId) body.planId = planId;
@@ -246,16 +267,19 @@
       let data; try { data = await response.json(); } catch { throw new Error(tr('The rule service returned an unreadable response.', 'De regelservice gaf een onleesbaar antwoord.', 'Der Regeldienst hat eine unlesbare Antwort geliefert.')); }
       if (!response.ok) {
         const fallback = response.status === 401 || response.status === 403 ? tr('Sign in again to use the private rule search.', 'Meld je opnieuw aan om de privé-regelzoekfunctie te gebruiken.', 'Bitte erneut anmelden, um die private Regelsuche zu verwenden.') : response.status === 404 ? tr('Rule text search is not available on this version yet.', 'Regeltekst zoeken is nog niet beschikbaar in deze versie.', 'Die Regeltextsuche ist in dieser Version noch nicht verfügbar.') : response.status === 429 ? tr('The service is busy. Please try again shortly.', 'De service is bezet. Probeer het zo opnieuw.', 'Der Dienst ist ausgelastet. Bitte kurz warten und erneut versuchen.') : tr('Rule text could not be checked. Try again or open the official sources below.', 'De regeltekst kon niet worden gecontroleerd. Probeer opnieuw of open de officiële bronnen hieronder.', 'Die Regeltexte konnten nicht geprüft werden. Erneut versuchen oder die amtlichen Quellen unten öffnen.');
-        throw new Error(text(data?.error) ? data.error.slice(0, 500) : text(data?.error?.message) ? data.error.message.slice(0, 500) : fallback);
+        const code = text(data?.error);
+        throw new Error(['weekly_search_limit', 'weekly_quota_unavailable'].includes(code) ? window.planviewAIMessage?.(code) || fallback : code ? code.slice(0, 500) : text(data?.error?.message) ? data.error.message.slice(0, 500) : fallback);
       }
       if (!data || typeof data !== 'object' || !['answered', 'matches', 'unavailable'].includes(data.state)) throw new Error(tr('The rule service returned an unexpected result.', 'De regelservice gaf een onverwacht resultaat.', 'Der Regeldienst hat ein unerwartetes Ergebnis geliefert.'));
-      if (request !== model.request || key !== model.key || pointKey(currentSelection()?.point) !== key) return;
+      if (abortForTimeout.signal.aborted || request !== model.request || key !== model.key || pointKey(currentSelection()?.point) !== key) return;
       model.response = data;model.responseQuery=query;
+      feedbackCount = sourceList(data).length; feedbackOutcome = data.state === 'unavailable' ? feedbackCount ? 'partial' : 'error' : !feedbackCount ? 'empty' : data.coverage?.partial ? 'partial' : 'complete';
     } catch (error) {
       if (error.name === 'AbortError' || request !== model.request || key !== model.key) return;
       model.error = error.message || tr('Rule search failed.', 'Regelzoekopdracht mislukt.', 'Regelsuche fehlgeschlagen.');
+      feedbackOutcome = 'error';
     } finally {
-      if (request === model.request && key === model.key) { model.loading = false; model.abort = null; paintResults(); }
+      if (request === model.request && key === model.key && pointKey(currentSelection()?.point) === key) { model.loading = false; model.abort = null; paintResults(); if (feedbackOutcome) finishSearchFeedback(feedbackId, feedbackOutcome, feedbackCount); }
     }
   }
   window.planviewRulesSearch = { render, selectionChanged, cancel: () => { stop(); paintResults(); } };
